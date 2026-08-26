@@ -1,6 +1,6 @@
 from enum import Enum
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 
 class EmotionalTone(str, Enum):
@@ -43,8 +43,15 @@ class PredictionResult(BaseModel):
 
     @field_validator("background_noise_type")
     @classmethod
-    def validate_noise_type(cls, value: str, info) -> str:
+    def validate_noise_type(cls, value: str) -> str:
         return value.strip()
+
+    @model_validator(mode="after")
+    def validate_noise_invariants(self) -> "PredictionResult":
+        if not self.background_noise_present:
+            self.background_noise_type = ""
+            self.background_noise_severity = BackgroundNoiseSeverity.NONE
+        return self
 
 
 class InternalInferenceMetadata(BaseModel):

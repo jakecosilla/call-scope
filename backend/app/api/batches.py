@@ -1,11 +1,12 @@
 from typing import Literal
 
-from fastapi import APIRouter, File, Form, HTTPException, UploadFile, status
+from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
 from fastapi.responses import PlainTextResponse
 
 from app.application.batch_runner import BatchProcessor
 from app.domain.schema import BatchSummary
 from app.evaluation.evaluator import ModelEvaluator
+from app.security.auth import get_current_user
 from app.storage.store import BatchStore
 
 router = APIRouter(prefix="/api/batches", tags=["batches"])
@@ -15,16 +16,19 @@ router = APIRouter(prefix="/api/batches", tags=["batches"])
 async def create_batch(
     file: UploadFile = File(...),
     approach: Literal["approach_a", "approach_b"] = Form("approach_a"),
+    current_user: str = Depends(get_current_user),
 ):
-    if not file.filename or not file.filename.endswith(".zip"):
+    if not file.filename:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="File must be a .zip archive containing audio clips and optional labels.csv manifest",
+            detail="Filename is required",
         )
 
-    zip_bytes = await file.read()
+    file_bytes = await file.read()
     try:
-        batch_id, manifest_validation = BatchProcessor.process_zip_bytes(zip_bytes, approach=approach)
+        batch_id, manifest_validation = BatchProcessor.process_zip_bytes(
+            file_bytes, filename=file.filename, approach=approach
+        )
         return {
             "batch_id": batch_id,
             "status": "processing",
@@ -43,13 +47,13 @@ async def create_batch(
 
 
 @router.get("", response_model=list[BatchSummary])
-def list_batches():
+def list_batches(current_user: str = Depends(get_current_user)):
     store = BatchStore.get_instance()
     return store.list_batches()
 
 
 @router.get("/{batch_id}", response_model=BatchSummary)
-def get_batch(batch_id: str):
+def get_batch(batch_id: str, current_user: str = Depends(get_current_user)):
     store = BatchStore.get_instance()
     batch = store.get_batch(batch_id)
     if not batch:
@@ -58,7 +62,7 @@ def get_batch(batch_id: str):
 
 
 @router.get("/{batch_id}/results.csv")
-def export_csv(batch_id: str):
+def export_csv(batch_id: str, current_user: str = Depends(get_current_user)):
     try:
         csv_content = BatchProcessor.export_csv(batch_id)
         return PlainTextResponse(
@@ -71,7 +75,7 @@ def export_csv(batch_id: str):
 
 
 @router.get("/{batch_id}/results.json")
-def export_json(batch_id: str):
+def export_json(batch_id: str, current_user: str = Depends(get_current_user)):
     try:
         json_content = BatchProcessor.export_json(batch_id)
         return json_content
@@ -80,7 +84,7 @@ def export_json(batch_id: str):
 
 
 @router.get("/{batch_id}/evaluation")
-def get_evaluation(batch_id: str):
+def get_evaluation(batch_id: str, current_user: str = Depends(get_current_user)):
     store = BatchStore.get_instance()
     batch = store.get_batch(batch_id)
     if not batch:

@@ -22,10 +22,11 @@ class BatchProcessor:
     @classmethod
     def process_zip_bytes(
         cls,
-        zip_bytes: bytes,
+        file_bytes: bytes,
+        filename: str = "batch.zip",
         approach: Literal["approach_a", "approach_b"] = "approach_a",
     ) -> tuple[str, dict]:
-        if len(zip_bytes) > MAX_UPLOAD_SIZE_BYTES:
+        if len(file_bytes) > MAX_UPLOAD_SIZE_BYTES:
             raise ValueError(f"Upload size exceeds maximum allowed limit ({MAX_UPLOAD_SIZE_BYTES // (1024*1024)}MB)")
 
         batch_id = str(uuid.uuid4())
@@ -36,25 +37,35 @@ class BatchProcessor:
         manifest_content: str | None = None
         total_uncompressed_bytes = 0
 
-        with zipfile.ZipFile(io.BytesIO(zip_bytes), "r") as zf:
-            for member in zf.infolist():
-                if member.is_dir():
-                    continue
+        ext = os.path.splitext(filename)[1].lower() if filename else ""
 
-                clean_name = os.path.basename(member.filename)
-                if not clean_name or clean_name.startswith(".") or ".." in member.filename:
-                    continue
+        if ext == ".zip" or zipfile.is_zipfile(io.BytesIO(file_bytes)):
+            with zipfile.ZipFile(io.BytesIO(file_bytes), "r") as zf:
+                for member in zf.infolist():
+                    if member.is_dir():
+                        continue
 
-                total_uncompressed_bytes += member.file_size
-                if total_uncompressed_bytes > MAX_UNCOMPRESSED_SIZE_BYTES:
-                    raise ValueError("Extracted batch size exceeds maximum safety limit")
+                    clean_name = os.path.basename(member.filename)
+                    if not clean_name or clean_name.startswith(".") or ".." in member.filename:
+                        continue
 
-                ext = os.path.splitext(clean_name)[1].lower()
+                    total_uncompressed_bytes += member.file_size
+                    if total_uncompressed_bytes > MAX_UNCOMPRESSED_SIZE_BYTES:
+                        raise ValueError("Extracted batch size exceeds maximum safety limit")
 
-                if clean_name.lower() == "labels.csv" or ext == ".csv":
-                    manifest_content = zf.read(member).decode("utf-8", errors="ignore")
-                elif ext in ALLOWED_AUDIO_EXTENSIONS:
-                    audio_files[clean_name] = zf.read(member)
+                    member_ext = os.path.splitext(clean_name)[1].lower()
+
+                    if clean_name.lower() == "labels.csv" or member_ext == ".csv":
+                        manifest_content = zf.read(member).decode("utf-8", errors="ignore")
+                    elif member_ext in ALLOWED_AUDIO_EXTENSIONS:
+                        audio_files[clean_name] = zf.read(member)
+        elif ext in ALLOWED_AUDIO_EXTENSIONS:
+            clean_name = os.path.basename(filename)
+            audio_files[clean_name] = file_bytes
+        else:
+            raise ValueError(
+                f"Unsupported file format '{ext}'. Please upload audio clips (.ogg, .wav, .mp3) or a .zip archive."
+            )
 
         if not audio_files:
             raise ValueError("No supported audio files found in upload")

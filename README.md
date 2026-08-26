@@ -11,8 +11,8 @@ CallScope analyzes real production call audio to classify customer emotional ton
 CallScope is built as a high-performance **modular monolith** optimized for speed, reliability, strict cost efficiency (<= $0.003 / audio minute), and seamless deployment to Azure.
 
 - **Evaluator Access**: Hosted web dashboard with simple secure authentication.
-- **Batch Evaluation Workflow**: Upload ZIP archives or folder batches containing call audio (`.ogg`, `.wav`, `.mp3`) and optional `labels.csv` ground truth.
-- **Real-Time Progress & Error Isolation**: Progress updates via TanStack Query polling. One corrupted clip does not fail the batch.
+- **Batch Evaluation Workflow**: Upload ZIP archives, folders, or direct call audio files (`.ogg`, `.wav`, `.mp3`) with an optional `labels.csv` ground truth manifest.
+- **Real-Time Progress & Error Isolation**: Progress updates via polling. One corrupted clip does not fail the batch.
 - **Export Formats**: Download predictions as CSV or JSON preserving exact filename mapping.
 
 ---
@@ -25,8 +25,8 @@ React 18 + Vite SPA (Azure Static Web Apps)
        v (HTTP / REST API)
 FastAPI Backend (Azure Container Apps)
        |
-       +--> Audio Preprocessing & Signal Analysis (librosa / torchaudio)
-       +--> Silero VAD & Voice Activity Analysis
+       +--> Audio Preprocessing & Signal Analysis (librosa / soundfile)
+       +--> RMS Energy & Pitch-Based Voice Activity Analysis
        +--> Approach A (Acoustic SER Engine) & Approach B (Wav2Vec2 SER)
        +--> Batch Processor & In-Memory Store
        +--> Model Metrics & Evaluation Engine
@@ -36,7 +36,7 @@ FastAPI Backend (Azure Container Apps)
 
 ## 3. Technology Choices
 
-- **Frontend**: React 18, TypeScript, Vite, Tailwind CSS, TanStack Query, Lucide Icons, Vitest, Playwright.
+- **Frontend**: React 18, TypeScript, Vite, Tailwind CSS, TanStack Query, Lucide Icons, Vitest.
 - **Backend**: Python 3.12, FastAPI, Pydantic v2, PyTorch, torchaudio, librosa, soundfile, pytest, Uvicorn.
 - **Containerization & Hosting**: Docker multi-stage builds, Azure Container Apps Consumption Tier.
 
@@ -49,13 +49,13 @@ FastAPI Backend (Azure Container Apps)
 ├── backend/
 │   ├── app/
 │   │   ├── api/          # FastAPI routers (auth, batches, health)
-│   │   ├── application/  # Batch orchestration & ZIP runner
+│   │   ├── application/  # Batch orchestration & audio processing
 │   │   ├── domain/       # Pydantic schemas & enums
 │   │   ├── inference/    # Approach A & Approach B pipelines
 │   │   ├── audio/        # Audio processor & feature extraction
 │   │   ├── evaluation/   # ModelEvaluator (Accuracy, Macro F1)
 │   │   ├── storage/      # BatchStore state manager
-│   │   └── security/     # Password hashing & auth tokens
+│   │   └── security/     # Password hashing & JWT auth tokens
 │   ├── tests/            # pytest unit & API integration tests
 │   └── Dockerfile
 ├── frontend/
@@ -65,9 +65,8 @@ FastAPI Backend (Azure Container Apps)
 │   │   ├── components/   # Navbar & UI components
 │   │   ├── api/          # API client wrapper
 │   │   └── types/        # TypeScript interfaces
-│   ├── tests/            # Playwright E2E tests
+│   ├── postcss.config.js # Tailwind CSS compilation config
 │   └── Dockerfile
-├── Software Engineer Assessment/ # Unmodified assessment assets
 ├── .github/workflows/    # PR, TEST, and PROD GitHub Actions
 ├── docker-compose.yml
 ├── .env.example
@@ -189,11 +188,12 @@ Or from the root directory:
 python -m pytest backend/tests
 ```
 
-### Assessment Benchmark Fixtures Run
+### Assessment Benchmark Run
 
 From the root directory:
 ```bash
-python scratch/run_benchmark.py
+python scratch/run_benchmark.py --approach approach_a
+python scratch/run_benchmark.py --approach approach_b
 ```
 
 ### Frontend Tests (`vitest`)
@@ -202,14 +202,6 @@ From the `frontend` directory:
 ```bash
 cd frontend
 npm test
-```
-
-### End-to-End Tests (`playwright`)
-
-From the `frontend` directory:
-```bash
-cd frontend
-npm run test:e2e
 ```
 
 ---
@@ -221,7 +213,7 @@ npm run test:e2e
 | `/api/health` | GET | Liveness and health check |
 | `/api/ready` | GET | Dependency readiness check |
 | `/api/auth/login` | POST | Authenticate evaluator and obtain access token |
-| `/api/batches` | POST | Upload ZIP batch archive with audio & manifest |
+| `/api/batches` | POST | Upload batch (ZIP archive or direct audio file) |
 | `/api/batches` | GET | List batch history |
 | `/api/batches/{id}` | GET | Get real-time progress status and file results |
 | `/api/batches/{id}/results.csv` | GET | Export predictions as CSV |
@@ -260,17 +252,10 @@ Merging to `main` triggers `.github/workflows/deploy-prod.yml`:
 3. Deploys to Azure Container Apps (`callscope-api-prod`).
 4. Runs production smoke test.
 
-### Rollback Procedure
-
-If a production release exhibits issues:
-1. Identify the last known-good commit SHA (e.g. `sha-1b4e5f`).
-2. Run `az containerapp update --name callscope-api-prod --image <ACR>/callscope-api:sha-1b4e5f`.
-3. Verify `/api/health` and `/api/ready`.
-
 ---
 
 ## 13. Cost & Latency Summary
 
 - **Measured RTF**: `0.0353` (Processes 1 minute of audio in ~2.1 seconds on 1 vCPU).
-- **Inference Cost**: **$0.000148 / audio minute** (20x under the $0.003 cost ceiling).
+- **Inference Cost**: **$0.000076 / audio minute** (39x under the $0.003 cost ceiling).
 - **Data Privacy**: Audio is processed entirely in memory; zero egress to external APIs.

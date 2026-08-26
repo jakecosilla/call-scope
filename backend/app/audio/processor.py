@@ -70,13 +70,14 @@ class AudioProcessor:
         spectral_centroid = librosa.feature.spectral_centroid(y=y, sr=sr, hop_length=hop_length)[0]
         centroid_mean = float(np.mean(spectral_centroid))
 
-        speech_threshold = max(rms_mean * 0.35, 0.003)
+        speech_threshold = max(rms_mean * 0.30, 0.0025)
         is_speech_frame = rms > speech_threshold
         speech_ratio = float(np.mean(is_speech_frame))
 
+        # Long silence: Require at least 5.0 continuous seconds of uninterrupted dead air
         consecutive_silent_frames = 0
         max_silent_frames = 0
-        silence_frame_threshold = int(6.0 / (hop_length / sr))
+        silence_frame_threshold = int(5.0 / (hop_length / sr))
 
         for is_speech in is_speech_frame:
             if not is_speech:
@@ -86,9 +87,7 @@ class AudioProcessor:
             else:
                 consecutive_silent_frames = 0
 
-        long_silence_present = bool(
-            max_silent_frames >= silence_frame_threshold or (1.0 - speech_ratio) > 0.70
-        )
+        long_silence_present = bool(max_silent_frames >= silence_frame_threshold)
 
         non_speech_mask = ~is_speech_frame
         if np.any(non_speech_mask) and np.any(is_speech_frame):
@@ -113,19 +112,36 @@ class AudioProcessor:
         non_speech_rms = (
             float(np.mean(rms[non_speech_mask])) if np.any(non_speech_mask) else 0.0
         )
+        non_speech_centroid = (
+            float(np.mean(spectral_centroid[non_speech_mask]))
+            if np.any(non_speech_mask)
+            else centroid_mean
+        )
 
         noise_present = False
         noise_type = ""
         noise_severity = BackgroundNoiseSeverity.NONE
 
-        if snr_db < 30.0 and (non_speech_rms > 0.002 or non_speech_flatness > 0.0018):
+        if snr_db < 22.0 and non_speech_rms > 0.005:
             noise_present = True
-            if non_speech_flatness > 0.004 or (snr_db < 28.0 and centroid_mean < 2000.0):
-                noise_type = "sharp static"
+            if non_speech_flatness > 0.005:
+                noise_type = "line static"
+                noise_severity = (
+                    BackgroundNoiseSeverity.HIGH if snr_db < 10.0 else BackgroundNoiseSeverity.MEDIUM
+                )
+            elif 1000.0 <= non_speech_centroid <= 3200.0:
+                noise_type = "office chatter"
+                noise_severity = BackgroundNoiseSeverity.LOW
+            elif non_speech_centroid < 800.0:
+                noise_type = "road noise"
                 noise_severity = BackgroundNoiseSeverity.MEDIUM
             else:
-                noise_type = "TV"
-                noise_severity = BackgroundNoiseSeverity.MEDIUM
+                noise_type = "background noise"
+                noise_severity = BackgroundNoiseSeverity.LOW
+        else:
+            noise_present = False
+            noise_type = ""
+            noise_severity = BackgroundNoiseSeverity.NONE
 
         f0, voiced_flag, _ = librosa.pyin(
             y,
@@ -145,8 +161,9 @@ class AudioProcessor:
             pitch_contour = []
 
         overlap_present = False
-        if len(rms) > 10:
-            if pitch_std > 100.0 or (flatness_mean > 0.0018 and duration > 30.0 and rms_max > 0.25):
+        if len(rms) > 10 and np.any(is_speech_frame):
+            speech_rms_std = float(np.std(rms[is_speech_frame]))
+            if pitch_std > 120.0 and speech_rms_std > 0.06:
                 overlap_present = True
 
         return AudioFeatures(

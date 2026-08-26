@@ -20,10 +20,14 @@ class InferencePipeline:
         t0 = time.perf_counter()
 
         if approach == "approach_b":
-            prediction, features = SpeechEmotionFoundationInference.predict(audio_bytes, filename)
+            prediction, features, preproc_time, infer_time = SpeechEmotionFoundationInference.predict(
+                audio_bytes, filename
+            )
             approach_name = SpeechEmotionFoundationInference.APPROACH_NAME
         else:
-            prediction, features = AcousticPipelineInference.predict(audio_bytes, filename)
+            prediction, features, preproc_time, infer_time = AcousticPipelineInference.predict(
+                audio_bytes, filename
+            )
             approach_name = AcousticPipelineInference.APPROACH_NAME
 
         t1 = time.perf_counter()
@@ -39,8 +43,8 @@ class InferencePipeline:
         metadata = InternalInferenceMetadata(
             pipeline_version=PIPELINE_VERSION,
             approach=approach_name,
-            preprocessing_duration_seconds=round(total_duration * 0.4, 4),
-            inference_duration_seconds=round(total_duration * 0.6, 4),
+            preprocessing_duration_seconds=round(preproc_time, 4),
+            inference_duration_seconds=round(infer_time, 4),
             total_duration_seconds=round(total_duration, 4),
             real_time_factor=round(rtf, 4),
             audio_duration_seconds=round(audio_duration, 2),

@@ -14,29 +14,30 @@ export const UploadSection: React.FC<UploadSectionProps> = ({ onBatchCreated }) 
   const [error, setError] = useState<string | null>(null);
   const [manifestValidation, setManifestValidation] = useState<ManifestValidation | null>(null);
 
+  const ALLOWED_EXTENSIONS = ['.zip', '.ogg', '.wav', '.mp3', '.flac', '.m4a', '.aac'];
+
+  const validateFile = (selected: File): boolean => {
+    const ext = selected.name.substring(selected.name.lastIndexOf('.')).toLowerCase();
+    if (!ALLOWED_EXTENSIONS.includes(ext)) {
+      setError(`Unsupported file format '${ext}'. Please upload audio files (.ogg, .wav, .mp3) or a .zip archive.`);
+      setFile(null);
+      return false;
+    }
+    setFile(selected);
+    setError(null);
+    return true;
+  };
+
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
-      const selected = e.target.files[0];
-      if (!selected.name.endsWith('.zip')) {
-        setError('Please upload a .zip archive containing call audio files and optional labels.csv');
-        setFile(null);
-        return;
-      }
-      setFile(selected);
-      setError(null);
+      validateFile(e.target.files[0]);
     }
   };
 
   const handleDrop = (e: React.DragEvent) => {
     e.preventDefault();
     if (e.dataTransfer.files && e.dataTransfer.files[0]) {
-      const selected = e.dataTransfer.files[0];
-      if (!selected.name.endsWith('.zip')) {
-        setError('Please upload a .zip archive containing call audio files and optional labels.csv');
-        return;
-      }
-      setFile(selected);
-      setError(null);
+      validateFile(e.dataTransfer.files[0]);
     }
   };
 
@@ -61,18 +62,18 @@ export const UploadSection: React.FC<UploadSectionProps> = ({ onBatchCreated }) 
 
   return (
     <div className="glass-panel p-6 rounded-2xl border border-gray-800 space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
           <h2 className="text-xl font-bold text-white flex items-center space-x-2">
             <FolderArchive className="w-5 h-5 text-blue-400" />
             <span>Upload Evaluation Batch</span>
           </h2>
           <p className="text-sm text-gray-400 mt-0.5">
-            Select a ZIP archive containing production call audio files (.ogg, .wav, .mp3) and an optional labels.csv
+            Upload a ZIP archive or folder containing production call audio clips (.ogg, .wav, .mp3) and optional labels.csv
           </p>
         </div>
 
-        <div className="flex items-center space-x-2 bg-gray-900/80 p-1.5 rounded-xl border border-gray-800">
+        <div className="flex items-center space-x-2 bg-gray-900/80 p-1.5 rounded-xl border border-gray-800 self-start md:self-auto">
           <button
             type="button"
             onClick={() => setApproach('approach_a')}
@@ -83,7 +84,7 @@ export const UploadSection: React.FC<UploadSectionProps> = ({ onBatchCreated }) 
             }`}
           >
             <Cpu className="w-3.5 h-3.5" />
-            <span>Approach A (Acoustic SER)</span>
+            <span>Acoustic Signal Engine</span>
           </button>
           <button
             type="button"
@@ -95,7 +96,7 @@ export const UploadSection: React.FC<UploadSectionProps> = ({ onBatchCreated }) 
             }`}
           >
             <Sparkles className="w-3.5 h-3.5" />
-            <span>Approach B (Foundation SER)</span>
+            <span>Foundation SER Model</span>
           </button>
         </div>
       </div>
@@ -111,7 +112,7 @@ export const UploadSection: React.FC<UploadSectionProps> = ({ onBatchCreated }) 
       >
         <input
           type="file"
-          accept=".zip"
+          accept=".zip,.ogg,.wav,.mp3,.flac,.m4a,.aac"
           id="batch-file-input"
           onChange={handleFileChange}
           className="hidden"
@@ -124,7 +125,7 @@ export const UploadSection: React.FC<UploadSectionProps> = ({ onBatchCreated }) 
             </div>
             <div>
               <p className="text-base font-semibold text-white">{file.name}</p>
-              <p className="text-xs text-gray-400">{(file.size / (1024 * 1024)).toFixed(2)} MB archive ready</p>
+              <p className="text-xs text-gray-400">{(file.size / (1024 * 1024)).toFixed(2)} MB archive ready for analysis</p>
             </div>
             <label
               htmlFor="batch-file-input"
@@ -140,9 +141,11 @@ export const UploadSection: React.FC<UploadSectionProps> = ({ onBatchCreated }) 
             </div>
             <div>
               <p className="text-sm font-semibold text-gray-200">
-                Drag and drop evaluation batch <span className="text-blue-400">ZIP</span> here
+                Drag & drop evaluation batch <span className="text-blue-400">ZIP</span> or browse files
               </p>
-              <p className="text-xs text-gray-400 mt-1">Supports call_001.ogg, call_002.ogg, call_003.ogg & labels.csv</p>
+              <p className="text-xs text-gray-400 mt-1">
+                Supported formats: .ogg, .wav, .mp3 with optional labels.csv manifest
+              </p>
             </div>
           </label>
         )}

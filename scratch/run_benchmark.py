@@ -1,5 +1,9 @@
+import io
+import math
 import os
 import sys
+import wave
+from typing import Literal
 
 backend_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "backend"))
 if backend_path not in sys.path:
@@ -7,20 +11,63 @@ if backend_path not in sys.path:
 
 from app.inference.pipeline import InferencePipeline
 
-ASSESSMENT_DIR = os.path.abspath("Software Engineer Assessment")
-calls = ["call_001.ogg", "call_002.ogg", "call_003.ogg"]
 
-print("=== CALLSCOPE ASSESSMENT CALLS BENCHMARK ===")
+def generate_synthetic_audio_bytes(duration_seconds: float = 5.0, sample_rate: int = 16000) -> bytes:
+    num_samples = int(duration_seconds * sample_rate)
+    buf = io.BytesIO()
+    with wave.open(buf, "wb") as wf:
+        wf.setnchannels(1)
+        wf.setsampwidth(2)
+        wf.setframerate(sample_rate)
+        frames = bytearray()
+        for i in range(num_samples):
+            val = int(32767.0 * 0.2 * math.sin(2 * math.pi * 440.0 * i / sample_rate))
+            frames.extend(val.to_bytes(2, byteorder="little", signed=True))
+        wf.writeframes(frames)
+    return buf.getvalue()
 
-for call_file in calls:
-    filepath = os.path.join(ASSESSMENT_DIR, call_file)
-    with open(filepath, "rb") as f:
-        audio_bytes = f.read()
 
-    pred, meta = InferencePipeline.analyze_audio(audio_bytes, call_file, approach="approach_a")
-    print(f"\n[File: {call_file}]")
-    print(f"Prediction: {pred.model_dump_json()}")
-    print(f"Audio Duration: {meta.audio_duration_seconds}s | Process Time: {meta.total_duration_seconds}s | RTF: {meta.real_time_factor}")
-    print(f"Estimated Cost / Min: ${meta.estimated_cost_per_audio_minute_usd:.6f}")
+def run_benchmark(approach: Literal["approach_a", "approach_b"] = "approach_a"):
+    assessment_dir = os.path.abspath("Software Engineer Assessment")
+    calls = ["call_001.ogg", "call_002.ogg", "call_003.ogg"]
 
-print("\n=== BENCHMARK COMPLETE ===")
+    print(f"=== CALLSCOPE ASSESSMENT CALLS BENCHMARK (Approach: {approach}) ===")
+
+    if os.path.exists(assessment_dir) and all(
+        os.path.exists(os.path.join(assessment_dir, c)) for c in calls
+    ):
+        for call_file in calls:
+            filepath = os.path.join(assessment_dir, call_file)
+            with open(filepath, "rb") as f:
+                audio_bytes = f.read()
+
+            pred, meta = InferencePipeline.analyze_audio(audio_bytes, call_file, approach=approach)
+            print(f"\n[File: {call_file}]")
+            print(f"Prediction: {pred.model_dump_json()}")
+            print(
+                f"Audio Duration: {meta.audio_duration_seconds}s | Process Time: {meta.total_duration_seconds}s | RTF: {meta.real_time_factor}"
+            )
+            print(f"Estimated Cost / Min: ${meta.estimated_cost_per_audio_minute_usd:.6f}")
+    else:
+        print("[INFO] Assessment fixtures directory not found. Running synthetic CI audio benchmark...")
+        synthetic_bytes = generate_synthetic_audio_bytes(duration_seconds=5.0)
+        pred, meta = InferencePipeline.analyze_audio(
+            synthetic_bytes, "synthetic_test_call.wav", approach=approach
+        )
+        print("\n[File: synthetic_test_call.wav]")
+        print(f"Prediction: {pred.model_dump_json()}")
+        print(
+            f"Audio Duration: {meta.audio_duration_seconds}s | Process Time: {meta.total_duration_seconds}s | RTF: {meta.real_time_factor}"
+        )
+        print(f"Estimated Cost / Min: ${meta.estimated_cost_per_audio_minute_usd:.6f}")
+
+    print("\n=== BENCHMARK COMPLETE ===")
+
+
+if __name__ == "__main__":
+    appr = "approach_a"
+    if "--approach" in sys.argv:
+        idx = sys.argv.index("--approach")
+        if idx + 1 < len(sys.argv):
+            appr = sys.argv[idx + 1]
+    run_benchmark(approach=appr)

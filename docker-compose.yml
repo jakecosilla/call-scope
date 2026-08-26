@@ -9,8 +9,8 @@ services:
       - "8000:8000"
     environment:
       - APP_ENV=${APP_ENV:-ChangeMe}
-      - EVALUATOR_USERNAME=${EVALUATOR_USERNAME:ChangeMe}
-      - EVALUATOR_PASSWORD=${EVALUATOR_PASSWORD:ChangeMe}
+      - EVALUATOR_USERNAME=${EVALUATOR_USERNAME:-ChangeMe}
+      - EVALUATOR_PASSWORD=${EVALUATOR_PASSWORD:-ChangeMe}
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/api/health"]
       interval: 15s
