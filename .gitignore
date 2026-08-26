@@ -46,3 +46,7 @@ dist/
 .DS_Store
 Thumbs.db
 .idea/
+
+# Runtime state
+*.db
+benchmark-results/

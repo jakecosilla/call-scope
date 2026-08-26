@@ -70,11 +70,13 @@ export interface EvaluationMetrics {
   emotional_tone_macro_f1: number;
   emotional_intensity_accuracy: number;
   background_noise_present_accuracy: number;
+  background_noise_type_accuracy: number;
   background_noise_severity_accuracy: number;
   audio_quality_accuracy: number;
   speaker_overlap_accuracy: number;
   long_silence_accuracy: number;
   per_class_metrics?: Record<string, { precision: number; recall: number; f1: number; support: number }>;
   confusion_matrix?: Record<string, Record<string, number>>;
+  estimated_cost_per_audio_minute_usd?: number | null;
   sample_size_note?: string;
 }

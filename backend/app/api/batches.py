@@ -4,6 +4,7 @@ from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, s
 from fastapi.responses import PlainTextResponse
 
 from app.application.batch_runner import BatchProcessor
+from app.config import DEFAULT_APPROACH
 from app.domain.schema import BatchSummary
 from app.evaluation.evaluator import ModelEvaluator
 from app.security.auth import get_current_user
@@ -15,7 +16,7 @@ router = APIRouter(prefix="/api/batches", tags=["batches"])
 @router.post("", response_model=dict)
 async def create_batch(
     file: UploadFile = File(...),
-    approach: Literal["approach_a", "approach_b"] = Form("approach_a"),
+    approach: Literal["approach_a", "approach_b"] = Form(DEFAULT_APPROACH),
     current_user: str = Depends(get_current_user),
 ):
     if not file.filename:
@@ -42,7 +43,7 @@ async def create_batch(
     except Exception as ex:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to extract and process batch: {str(ex)}",
+            detail="Batch upload failed due to an internal processing error",
         ) from ex
 
 
@@ -96,4 +97,6 @@ def get_evaluation(batch_id: str, current_user: str = Depends(get_current_user))
 
     predictions = {f.filename: f.prediction for f in batch.files if f.prediction is not None}
     metrics = ModelEvaluator.evaluate(predictions, ground_truth)
+    costs = [f.metadata.estimated_cost_per_audio_minute_usd for f in batch.files if f.metadata is not None]
+    metrics["estimated_cost_per_audio_minute_usd"] = round(sum(costs) / len(costs), 6) if costs else None
     return metrics

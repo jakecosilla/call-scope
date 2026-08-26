@@ -63,7 +63,7 @@ const DashboardContent: React.FC<{
 
 export function App() {
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(ApiClient.isAuthenticated());
-  const [userEmail, setUserEmail] = useState<string>('evaluator@callscope.ai');
+  const [userEmail, setUserEmail] = useState<string>('');
 
   const handleLoginSuccess = (email: string) => {
     setUserEmail(email);

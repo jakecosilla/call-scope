@@ -2,7 +2,8 @@ name: Pull Request CI
 
 on:
   pull_request:
-    branches: [ develop, main ]
+    branches: [develop, main]
+  workflow_call:
 
 jobs:
   frontend-checks:
@@ -16,7 +17,7 @@ jobs:
         with:
           node-version: 20
           cache: 'npm'
-          cache-dependency-path: frontend/package.json
+          cache-dependency-path: frontend/package-lock.json
 
       - name: Install Frontend Dependencies
         run: npm --prefix frontend ci
@@ -67,7 +68,7 @@ jobs:
         run: |
           PYTHONPATH=backend pytest --cov=app backend/tests
 
-      - name: Validate Assessment Benchmark Fixtures
+      - name: Inference Contract Smoke Test
         run: |
           PYTHONPATH=backend python scratch/run_benchmark.py
 

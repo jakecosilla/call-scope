@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Lock, Mail, Shield, Sparkles, Waves } from 'lucide-react';
+import { Lock, Mail, Shield, Waves } from 'lucide-react';
 import { ApiClient } from '../../api/client';
 
 interface LoginPageProps {
@@ -28,10 +28,6 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess }) => {
     }
   };
 
-  const handleFillEvaluatorCredentials = () => {
-    setUsername('evaluator@callscope.ai');
-    setPassword('CallScope2026!EvalSecret');
-  };
 
   return (
     <div className="min-h-[calc(100vh-4rem)] flex items-center justify-center p-4">
@@ -42,7 +38,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess }) => {
           <div className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-gradient-to-tr from-blue-600 via-indigo-500 to-cyan-400 mb-4 shadow-xl shadow-blue-500/20">
             <Waves className="w-8 h-8 text-white" />
           </div>
-          <h1 className="text-2xl font-bold text-white tracking-tight">CallScope AI</h1>
+          <h1 className="text-2xl font-bold text-white tracking-tight">CallScope</h1>
           <p className="text-sm text-gray-400 mt-1">Sign in with evaluator credentials to analyze call audio</p>
         </div>
 
@@ -55,10 +51,11 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess }) => {
 
         <form onSubmit={handleSubmit} className="space-y-5">
           <div>
-            <label className="block text-xs font-semibold text-gray-300 uppercase tracking-wider mb-2">Username / Email</label>
+            <label htmlFor="login-username" className="block text-xs font-semibold text-gray-300 uppercase tracking-wider mb-2">Username / Email</label>
             <div className="relative">
               <Mail className="w-5 h-5 text-gray-400 absolute left-3 top-3" />
               <input
+                id="login-username"
                 type="text"
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
@@ -70,10 +67,11 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess }) => {
           </div>
 
           <div>
-            <label className="block text-xs font-semibold text-gray-300 uppercase tracking-wider mb-2">Password</label>
+            <label htmlFor="login-password" className="block text-xs font-semibold text-gray-300 uppercase tracking-wider mb-2">Password</label>
             <div className="relative">
               <Lock className="w-5 h-5 text-gray-400 absolute left-3 top-3" />
               <input
+                id="login-password"
                 type="password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
@@ -100,15 +98,6 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess }) => {
           </button>
         </form>
 
-        <div className="mt-6 pt-6 border-t border-gray-800 text-center">
-          <button
-            onClick={handleFillEvaluatorCredentials}
-            className="inline-flex items-center space-x-1.5 text-xs text-blue-400 hover:text-blue-300 font-medium transition"
-          >
-            <Sparkles className="w-3.5 h-3.5" />
-            <span>Auto-fill Evaluator Credentials</span>
-          </button>
-        </div>
       </div>
     </div>
   );

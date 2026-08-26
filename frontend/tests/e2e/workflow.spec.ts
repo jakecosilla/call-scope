@@ -1,15 +1,3 @@
-import { expect, test } from '@playwright/test';
-
-test.describe('CallScope E2E Batch Workflow', () => {
-  test('evaluator happy path: login, batch upload, analysis, and result review', async ({ page }) => {
-    await page.goto('http://localhost:3000');
-
-    await expect(page.getByText('CallScope AI')).toBeVisible();
-
-    await page.getByRole('button', { name: /Auto-fill Evaluator Credentials/i }).click();
-    await page.getByRole('button', { name: /Authenticate & Access Dashboard/i }).click();
-
-    await expect(page.getByText('Upload Evaluation Batch')).toBeVisible();
-    await expect(page.getByText('evaluator@callscope.ai')).toBeVisible();
-  });
-});
+import { expect, test } from "@playwright/test";
+function tinyWav(): Buffer { const sr=16000,n=sr,data=n*2,b=Buffer.alloc(44+data); b.write("RIFF",0); b.writeUInt32LE(36+data,4); b.write("WAVEfmt ",8); b.writeUInt32LE(16,16); b.writeUInt16LE(1,20); b.writeUInt16LE(1,22); b.writeUInt32LE(sr,24); b.writeUInt32LE(sr*2,28); b.writeUInt16LE(2,32); b.writeUInt16LE(16,34); b.write("data",36); b.writeUInt32LE(data,40); return b; }
+test("login, upload, process and expose downloads", async ({page}) => { const u=process.env.E2E_USERNAME,p=process.env.E2E_PASSWORD; test.skip(!u||!p,"E2E credentials required"); await page.goto("/"); await page.getByLabel(/Username \/ Email/i).fill(u!); await page.getByLabel(/Password/i).fill(p!); await page.getByRole("button",{name:/Authenticate & Access Dashboard/i}).click(); await expect(page.getByText("Upload Evaluation Batch")).toBeVisible(); await page.locator("#batch-file-input").setInputFiles({name:"e2e.wav",mimeType:"audio/wav",buffer:tinyWav()}); await page.getByRole("button",{name:/Start Analysis Batch/i}).click(); await expect(page.getByText(/Analysis Results/i)).toBeVisible({timeout:120000}); await expect(page.getByRole("button",{name:/Download CSV/i})).toBeVisible(); await expect(page.getByRole("button",{name:/Download JSON/i})).toBeVisible(); });

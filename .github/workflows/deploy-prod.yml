@@ -1,41 +1,34 @@
 name: Deploy PROD
-
 on:
-  push:
-    branches: [ main ]
   workflow_dispatch:
-
+permissions:
+  id-token: write
+  contents: read
 jobs:
   deploy-prod:
-    name: Promote Immutable Image to Azure PROD
     runs-on: ubuntu-latest
     environment: production
     steps:
       - uses: actions/checkout@v4
-
-      - name: Log in to Azure Container Registry
-        uses: azure/docker-login@v1
+      - uses: azure/login@v2
         with:
-          login-server: ${{ secrets.ACR_LOGIN_SERVER }}
-          username: ${{ secrets.ACR_USERNAME }}
-          password: ${{ secrets.ACR_PASSWORD }}
-
-      - name: Promote Immutable Image
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+      - run: az acr login --name "${{ secrets.ACR_NAME }}"
+      - name: Resolve exact TEST-approved image digest
         run: |
-          IMAGE_TAG=${GITHUB_SHA::7}
-          docker build -t ${{ secrets.ACR_LOGIN_SERVER }}/callscope-api:sha-${IMAGE_TAG} ./backend
-          docker push ${{ secrets.ACR_LOGIN_SERVER }}/callscope-api:sha-${IMAGE_TAG}
-
-      - name: Azure Container App Production Deploy
-        uses: azure/CLI@v1
+          REPO=${{ secrets.ACR_LOGIN_SERVER }}/callscope-api
+          docker pull "$REPO:test-approved"
+          DIGEST=$(docker inspect --format='{{index .RepoDigests 0}}' "$REPO:test-approved")
+          echo "IMAGE=$DIGEST" >> "$GITHUB_ENV"
+      - run: az containerapp update --name "${{ secrets.PROD_CONTAINER_APP }}" --resource-group "${{ secrets.PROD_RESOURCE_GROUP }}" --image "$IMAGE"
+      - uses: Azure/static-web-apps-deploy@v1
         with:
-          inlineScript: |
-            IMAGE_TAG=${GITHUB_SHA::7}
-            az containerapp update \
-              --name callscope-api-prod \
-              --resource-group rg-callscope-prod \
-              --image ${{ secrets.ACR_LOGIN_SERVER }}/callscope-api:sha-${IMAGE_TAG}
-
-      - name: Production Smoke Check
-        run: |
-          curl -f https://api.callscope.ai/api/health || exit 1
+          azure_static_web_apps_api_token: ${{ secrets.PROD_SWA_TOKEN }}
+          action: upload
+          app_location: frontend
+          output_location: dist
+        env:
+          VITE_API_BASE_URL: ${{ secrets.PROD_API_BASE_URL }}
+      - run: curl --fail --retry 12 --retry-delay 5 "${{ secrets.PROD_API_BASE_URL }}/api/health"

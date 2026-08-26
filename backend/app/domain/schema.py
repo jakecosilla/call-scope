@@ -57,6 +57,10 @@ class PredictionResult(BaseModel):
 class InternalInferenceMetadata(BaseModel):
     pipeline_version: str
     approach: str
+    requested_approach: str | None = None
+    model_name: str | None = None
+    fallback_used: bool = False
+    fallback_reason: str | None = None
     preprocessing_duration_seconds: float
     inference_duration_seconds: float
     total_duration_seconds: float

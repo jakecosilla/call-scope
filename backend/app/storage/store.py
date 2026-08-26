@@ -5,10 +5,9 @@ import threading
 
 from app.domain.schema import BatchSummary, CallAnalysisFileResult
 
-DB_PATH = os.getenv(
-    "SQLITE_DB_PATH",
-    os.path.abspath(os.path.join(os.path.dirname(__file__), "callscope.db")),
-)
+from app.config import SQLITE_DB_PATH
+
+DB_PATH = SQLITE_DB_PATH
 
 
 class BatchStore:
@@ -133,6 +132,11 @@ class BatchStore:
                 )
             return results
 
+    def set_status(self, batch_id: str, status: str) -> None:
+        with self._get_connection() as conn:
+            conn.execute("UPDATE batches SET status = ? WHERE batch_id = ?", (status, batch_id))
+            conn.commit()
+
     def update_file_result(
         self, batch_id: str, file_result: CallAnalysisFileResult, completed_at: str | None = None
     ):
@@ -161,6 +165,8 @@ class BatchStore:
                 status = "completed"
 
         files_json = json.dumps([f.model_dump() for f in batch.files])
+        terminal = status in {"completed", "completed_with_errors", "failed"}
+        final_completed_at = completed_at if terminal else batch.completed_at
 
         with self._get_connection() as conn:
             conn.execute(
@@ -174,7 +180,7 @@ class BatchStore:
                     processed_files,
                     failed_files,
                     progress_percentage,
-                    completed_at or batch.completed_at,
+                    final_completed_at,
                     files_json,
                     batch_id,
                 ),

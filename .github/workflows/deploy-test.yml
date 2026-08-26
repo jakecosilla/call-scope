@@ -1,40 +1,42 @@
 name: Deploy TEST
-
 on:
   push:
-    branches: [ develop ]
-
+    branches: [develop]
+permissions:
+  id-token: write
+  contents: read
 jobs:
+  validate:
+    uses: ./.github/workflows/pr.yml
   deploy-test:
-    name: Deploy to Azure TEST Environment
+    needs: validate
     runs-on: ubuntu-latest
     environment: test
     steps:
       - uses: actions/checkout@v4
-
-      - name: Log in to Azure Container Registry
-        uses: azure/docker-login@v1
+      - uses: azure/login@v2
         with:
-          login-server: ${{ secrets.ACR_LOGIN_SERVER }}
-          username: ${{ secrets.ACR_USERNAME }}
-          password: ${{ secrets.ACR_PASSWORD }}
-
-      - name: Build & Tag Immutable Docker Image
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+      - run: az acr login --name "${{ secrets.ACR_NAME }}"
+      - name: Build and push immutable backend image
         run: |
-          IMAGE_TAG=${GITHUB_SHA::7}
-          docker build -t ${{ secrets.ACR_LOGIN_SERVER }}/callscope-api:sha-${IMAGE_TAG} ./backend
-          docker push ${{ secrets.ACR_LOGIN_SERVER }}/callscope-api:sha-${IMAGE_TAG}
-
-      - name: Azure CLI Container App Deploy
-        uses: azure/CLI@v1
+          IMAGE=${{ secrets.ACR_LOGIN_SERVER }}/callscope-api:sha-${GITHUB_SHA::7}
+          docker build -t "$IMAGE" ./backend
+          docker push "$IMAGE"
+          echo "IMAGE=$IMAGE" >> "$GITHUB_ENV"
+      - run: az containerapp update --name "${{ secrets.TEST_CONTAINER_APP }}" --resource-group "${{ secrets.TEST_RESOURCE_GROUP }}" --image "$IMAGE"
+      - uses: Azure/static-web-apps-deploy@v1
         with:
-          inlineScript: |
-            IMAGE_TAG=${GITHUB_SHA::7}
-            az containerapp update \
-              --name callscope-api-test \
-              --resource-group rg-callscope-test \
-              --image ${{ secrets.ACR_LOGIN_SERVER }}/callscope-api:sha-${IMAGE_TAG}
-
-      - name: Verify Health Endpoint
+          azure_static_web_apps_api_token: ${{ secrets.TEST_SWA_TOKEN }}
+          action: upload
+          app_location: frontend
+          output_location: dist
+        env:
+          VITE_API_BASE_URL: ${{ secrets.TEST_API_BASE_URL }}
+      - run: curl --fail --retry 12 --retry-delay 5 "${{ secrets.TEST_API_BASE_URL }}/api/health"
+      - name: Mark tested backend image for promotion
         run: |
-          curl -f https://test-api.callscope.ai/api/health || exit 1
+          docker tag "$IMAGE" "${{ secrets.ACR_LOGIN_SERVER }}/callscope-api:test-approved"
+          docker push "${{ secrets.ACR_LOGIN_SERVER }}/callscope-api:test-approved"

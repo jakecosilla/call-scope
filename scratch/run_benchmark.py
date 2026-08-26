@@ -29,7 +29,7 @@ def generate_synthetic_audio_bytes(duration_seconds: float = 5.0, sample_rate: i
     return buf.getvalue()
 
 
-def run_benchmark(approach: Literal["approach_a", "approach_b"] = "approach_a"):
+def run_benchmark(approach: Literal["approach_a", "approach_b"] = "approach_a", fail_on_fallback: bool = False):
     assessment_dir = os.path.abspath("Software Engineer Assessment")
     labels_file = os.path.join(assessment_dir, "labels.csv")
     calls = ["call_001.ogg", "call_002.ogg", "call_003.ogg"]
@@ -53,6 +53,8 @@ def run_benchmark(approach: Literal["approach_a", "approach_b"] = "approach_a"):
 
             pred, meta = InferencePipeline.analyze_audio(audio_bytes, call_file, approach=approach)
             predictions[call_file] = pred
+            if fail_on_fallback and meta.fallback_used:
+                raise RuntimeError(f"{call_file}: fallback used: {meta.fallback_reason}")
 
             print(f"\n[File: {call_file}]")
             print(f"Prediction : {pred.model_dump_json()}")
@@ -76,6 +78,7 @@ def run_benchmark(approach: Literal["approach_a", "approach_b"] = "approach_a"):
             print(f"Emotional Tone Macro F1     : {metrics.get('emotional_tone_macro_f1', 0.0):.4f}")
             print(f"Emotional Intensity Acc     : {metrics.get('emotional_intensity_accuracy', 0.0) * 100:.1f}%")
             print(f"Background Noise Present Acc: {metrics.get('background_noise_present_accuracy', 0.0) * 100:.1f}%")
+            print(f"Background Noise Type Acc   : {metrics.get('background_noise_type_accuracy', 0.0) * 100:.1f}%")
             print(f"Background Noise Severity Acc: {metrics.get('background_noise_severity_accuracy', 0.0) * 100:.1f}%")
             print(f"Audio Quality Accuracy      : {metrics.get('audio_quality_accuracy', 0.0) * 100:.1f}%")
             print(f"Speaker Overlap Accuracy    : {metrics.get('speaker_overlap_accuracy', 0.0) * 100:.1f}%")
@@ -106,4 +109,4 @@ if __name__ == "__main__":
         idx = sys.argv.index("--approach")
         if idx + 1 < len(sys.argv):
             appr = sys.argv[idx + 1]
-    run_benchmark(approach=appr)
+    run_benchmark(approach=appr, fail_on_fallback="--fail-on-fallback" in sys.argv)

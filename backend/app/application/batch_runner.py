@@ -1,13 +1,15 @@
 import asyncio
 import csv
 import io
+import json
 import os
 import threading
 import uuid
 import zipfile
 from datetime import UTC, datetime
-from typing import Literal
+from typing import Literal, TypedDict
 
+from app.config import MAX_CONCURRENT_INFERENCE
 from app.domain.schema import CallAnalysisFileResult
 from app.evaluation.evaluator import ModelEvaluator
 from app.inference.pipeline import InferencePipeline
@@ -16,6 +18,15 @@ from app.storage.store import BatchStore
 MAX_UPLOAD_SIZE_BYTES = 50 * 1024 * 1024
 MAX_UNCOMPRESSED_SIZE_BYTES = 200 * 1024 * 1024
 ALLOWED_AUDIO_EXTENSIONS = {".ogg", ".wav", ".mp3", ".flac", ".m4a", ".aac"}
+_INFERENCE_SEMAPHORE = threading.BoundedSemaphore(MAX_CONCURRENT_INFERENCE)
+
+
+class ManifestValidation(TypedDict):
+    total_manifest_rows: int
+    matched_files: int
+    unmatched_audio_files: list[str]
+    missing_audio_files: list[str]
+    duplicate_manifest_rows: list[str]
 
 
 class BatchProcessor:
@@ -25,7 +36,7 @@ class BatchProcessor:
         file_bytes: bytes,
         filename: str = "batch.zip",
         approach: Literal["approach_a", "approach_b"] = "approach_a",
-    ) -> tuple[str, dict]:
+    ) -> tuple[str, ManifestValidation | None]:
         if len(file_bytes) > MAX_UPLOAD_SIZE_BYTES:
             raise ValueError(f"Upload size exceeds maximum allowed limit ({MAX_UPLOAD_SIZE_BYTES // (1024*1024)}MB)")
 
@@ -46,8 +57,9 @@ class BatchProcessor:
                         continue
 
                     clean_name = os.path.basename(member.filename)
-                    if not clean_name or clean_name.startswith(".") or ".." in member.filename:
-                        continue
+                    normalized = member.filename.replace("\\", "/")
+                    if not clean_name or clean_name.startswith(".") or normalized.startswith("/") or ".." in normalized.split("/"):
+                        raise ValueError("Archive contains an unsafe path")
 
                     total_uncompressed_bytes += member.file_size
                     if total_uncompressed_bytes > MAX_UNCOMPRESSED_SIZE_BYTES:
@@ -58,10 +70,17 @@ class BatchProcessor:
                     if clean_name.lower() == "labels.csv" or member_ext == ".csv":
                         manifest_content = zf.read(member).decode("utf-8", errors="ignore")
                     elif member_ext in ALLOWED_AUDIO_EXTENSIONS:
+                        if clean_name in audio_files:
+                            raise ValueError(f"Archive contains duplicate audio filename '{clean_name}'")
                         audio_files[clean_name] = zf.read(member)
         elif ext in ALLOWED_AUDIO_EXTENSIONS:
             clean_name = os.path.basename(filename)
             audio_files[clean_name] = file_bytes
+        elif ext == ".csv":
+            raise ValueError(
+                "labels.csv is a manifest, not an audio batch. Upload it together with audio files/folder, "
+                "or include it inside a ZIP archive."
+            )
         else:
             raise ValueError(
                 f"Unsupported file format '{ext}'. Please upload audio clips (.ogg, .wav, .mp3) or a .zip archive."
@@ -70,14 +89,16 @@ class BatchProcessor:
         if not audio_files:
             raise ValueError("No supported audio files found in upload")
 
-        store.create_batch(batch_id, total_files=len(audio_files), created_at=created_at)
-
         manifest_validation = None
+        ground_truth = None
         if manifest_content:
             ground_truth = ModelEvaluator.parse_manifest(manifest_content)
-            store.set_ground_truth(batch_id, ground_truth)
             manifest_validation = cls._validate_manifest(list(audio_files.keys()), manifest_content)
-
+            if manifest_validation["duplicate_manifest_rows"]:
+                raise ValueError("labels.csv contains duplicate filenames")
+        store.create_batch(batch_id, total_files=len(audio_files), created_at=created_at)
+        if ground_truth is not None:
+            store.set_ground_truth(batch_id, ground_truth)
         cls._schedule_batch_processing(batch_id, audio_files, approach)
 
         return batch_id, manifest_validation
@@ -100,7 +121,9 @@ class BatchProcessor:
             thread.start()
 
     @classmethod
-    def _validate_manifest(cls, audio_filenames: list[str], manifest_content: str) -> dict:
+    def _validate_manifest(
+        cls, audio_filenames: list[str], manifest_content: str
+    ) -> ManifestValidation:
         matched = []
         unmatched_audio = []
         missing_audio = []
@@ -138,16 +161,16 @@ class BatchProcessor:
         approach: Literal["approach_a", "approach_b"],
     ):
         store = BatchStore.get_instance()
-        batch = store.get_batch(batch_id)
-        if batch:
-            batch.status = "processing"
+        store.set_status(batch_id, "processing")
 
         for filename, audio_bytes in audio_files.items():
             file_id = str(uuid.uuid4())
             try:
-                prediction, metadata = await asyncio.to_thread(
-                    InferencePipeline.analyze_audio, audio_bytes, filename, approach=approach
-                )
+                def run_inference():
+                    with _INFERENCE_SEMAPHORE:
+                        return InferencePipeline.analyze_audio(audio_bytes, filename, approach=approach)
+
+                prediction, metadata = await asyncio.to_thread(run_inference)
                 file_result = CallAnalysisFileResult(
                     file_id=file_id,
                     filename=filename,
@@ -160,7 +183,7 @@ class BatchProcessor:
                     file_id=file_id,
                     filename=filename,
                     status="failed",
-                    error_message=f"Failed to process audio clip: {str(ex)}",
+                    error_message="Audio processing failed. See server logs for details.",
                 )
             completed_at = datetime.now(UTC).isoformat()
             store.update_file_result(batch_id, file_result, completed_at=completed_at)
@@ -172,61 +195,11 @@ class BatchProcessor:
         batch = store.get_batch(batch_id)
         if not batch:
             raise ValueError(f"Batch {batch_id} not found")
-
         output = io.StringIO()
-        fieldnames = [
-            "name",
-            "emotional_tone",
-            "emotional_intensity",
-            "background_noise_present",
-            "background_noise_type",
-            "background_noise_severity",
-            "audio_quality",
-            "speaker_overlap_present",
-            "long_silence_present",
-            "confidence",
-            "status",
-            "error_message",
-        ]
-        writer = csv.DictWriter(output, fieldnames=fieldnames)
+        writer = csv.DictWriter(output, fieldnames=["name", "result_json", "status", "error_message"])
         writer.writeheader()
-
-        for f in batch.files:
-            if f.prediction:
-                writer.writerow(
-                    {
-                        "name": f.filename,
-                        "emotional_tone": f.prediction.emotional_tone.value,
-                        "emotional_intensity": f.prediction.emotional_intensity.value,
-                        "background_noise_present": str(f.prediction.background_noise_present).lower(),
-                        "background_noise_type": f.prediction.background_noise_type,
-                        "background_noise_severity": f.prediction.background_noise_severity.value,
-                        "audio_quality": f.prediction.audio_quality.value,
-                        "speaker_overlap_present": str(f.prediction.speaker_overlap_present).lower(),
-                        "long_silence_present": str(f.prediction.long_silence_present).lower(),
-                        "confidence": f.prediction.confidence,
-                        "status": f.status,
-                        "error_message": "",
-                    }
-                )
-            else:
-                writer.writerow(
-                    {
-                        "name": f.filename,
-                        "emotional_tone": "",
-                        "emotional_intensity": "",
-                        "background_noise_present": "",
-                        "background_noise_type": "",
-                        "background_noise_severity": "",
-                        "audio_quality": "",
-                        "speaker_overlap_present": "",
-                        "long_silence_present": "",
-                        "confidence": "",
-                        "status": f.status,
-                        "error_message": f.error_message or "Unknown error",
-                    }
-                )
-
+        for item in batch.files:
+            writer.writerow({"name": item.filename, "result_json": json.dumps(item.prediction.model_dump(mode="json"), separators=(",", ":")) if item.prediction else "", "status": item.status, "error_message": item.error_message or ""})
         return output.getvalue()
 
     @classmethod

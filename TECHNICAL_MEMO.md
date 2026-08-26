@@ -1,93 +1,30 @@
-# CallScope AI Technical Engineering Memo
+# CallScope Technical Engineering Memo
 
-**Project**: Voice Tone & Background Noise Analysis  
-**Pipeline Version**: `2026-08-26.1`  
-**Author**: Lead Software Engineer  
+**Pipeline version:** `2026-08-27.1`
 
----
+## Problem
+The service predicts emotional tone/intensity, background-noise presence/type/severity, audio quality, speaker overlap, long silence, and confidence. These dimensions are treated independently where practical.
 
-## 1. Problem Formulation & Architectural Principles
+## Approach A — Acoustic Signal Engine
+Uses RMS, pitch statistics, clipping, SNR/noise-floor features, spectral flatness/centroid and continuous-silence analysis. Emotion/noise/overlap mappings remain heuristic and must be validated on a larger independent dataset; the three supplied calls are insufficient to calibrate production thresholds.
 
-Production call analysis requires extracting multi-dimensional structured acoustic and semantic signals from customer calls. A critical engineering principle implemented in **CallScope** is treating prediction dimensions **independently**:
+## Approach B — Foundation SER
+Uses `superb/wav2vec2-base-superb-er` at 16 kHz. Long audio is chunked and chunk probabilities are averaged. Runtime mode can fall back to acoustic inference, but benchmark mode can fail on fallback so results are not misattributed.
 
-1. **Emotional Tone & Intensity**: Evaluates pitch variability, RMS energy, spectral envelope slope, and acoustic prosody without relying on clip duration or overfit file names. Loudness alone does not imply customer frustration.
-2. **Technical Audio Quality**: Evaluates signal-to-noise ratio (SNR), clipping sample ratios, and harmonic distortion independent of customer tone. Poor codec quality or clipping is evaluated without inferring environmental background noise.
-3. **Background Noise (Presence, Type, Severity)**: Analyzes non-speech intervals using spectral flatness, spectral centroid, and noise-floor energy. Static noise, road noise, and office chatter are isolated based on spectral characteristics.
-4. **Speaker Overlap**: Detected via dual pitch candidate variances and high-flatness speech frame energy spikes during active speech intervals.
-5. **Long Silence**: Deterministically calculated via Voice Activity Detection (VAD) frame counters (detecting continuous dead air >= 5.0 seconds).
+## Validation
+Run `python scratch/run_benchmark.py --approach approach_a` and `python scratch/run_benchmark.py --approach approach_b --fail-on-fallback`. Benchmark output is the source of truth for accuracy, emotional-tone macro F1, confusion matrix, latency and cost. The evaluator also measures background-noise-type exact-match accuracy. Do not publish stale manually entered benchmark values.
 
----
+## Cost
+Configured estimate: `processing_seconds * (vCPU_cost_per_second + memory_GiB_cost_per_second * container_memory_GiB)`. Free-tier grants are not used to prove intrinsic inference cost.
 
-## 2. Experimental Model Evaluation: Approach A vs. Approach B
+## Privacy
+Customer audio is not sent to a third-party inference API. Foundation-model artifacts may be downloaded during provisioning/startup unless pre-baked or stored in controlled infrastructure.
 
-We implemented and benchmarked two materially distinct inference pipelines against supplied production calls:
+## Reliability
+CPU inference is moved off the FastAPI event loop and concurrency bounded. Batch metadata uses configurable SQLite storage; a container-local SQLite file is not sufficient for multi-replica Azure durability, so production should use durable mounted or managed storage. In-flight restart recovery also requires durable audio staging.
 
-### Approach A — Acoustic Signal Engine (Task-Specific Baseline)
-- **Architecture**: Librosa/torchaudio spectral feature extraction + RMS & pitch-based VAD frame counters + pitch dynamics decision tree + acoustic noise floor classification.
-- **Strengths**: 
-  - Sub-millisecond preprocessing overhead.
-  - Zero external cloud model API latency or data leakage risks.
-  - Extremely deterministic silence, clipping, SNR, and noise classification.
-- **Measured Latency**: Processing time ~1.2s to 2.4s for ~35s call clips (Real-Time Factor: **0.035 to 0.078**).
-- **Cost**: **$0.000076 to $0.000169 per audio minute** on CPU Container Apps (18x to 39x under the $0.003/min ceiling).
-
-### Approach B — Foundation SER Model (Wav2Vec2 Speech Emotion Classifier)
-- **Architecture**: HuggingFace pre-trained `wav2vec2-lg-xlsr-en-speech-emotion-recognition` foundation model with automatic 16,000 Hz resampling and acoustic fallback.
-- **Strengths**:
-  - Higher nuance on subtle emotional tone shifts in natural conversational speech.
-  - Stronger zero-shot generalization across accents and unseen telephony codecs.
-- **Measured Latency**: Processing time ~3.5s to 28.0s for long call clips (Real-Time Factor: **0.10 to 0.35**).
-- **Cost**: **$0.000219 to $0.000769 per audio minute** on CPU Container Apps.
-
----
-
-## 3. Final Production Selection & Justification
-
-**Selected Pipeline**: **Approach A (Acoustic Signal Engine)** with Approach B fallback hooks.
-
-### Justification:
-1. **Cost Efficiency**: Approach A achieves a compute cost of **$0.000076 to $0.000169 per audio minute**, leaving >94% safety margin under the assessment's **$0.003/minute ceiling**.
-2. **Speed & Latency**: Real-time factor (RTF) of **~0.035** means 1 minute of call audio is processed in ~2.1 seconds on standard single vCPU containers.
-3. **Data Privacy**: All signal processing runs locally inside container memory without transmitting raw customer call audio to external 3rd-party SaaS APIs.
-4. **Reproducibility**: Completely deterministic logic for audio quality, clipping, static noise, and dead-air silence.
-
----
-
-## 4. Empirical Benchmark & Metric Summary
-
-### Benchmark Results (`python scratch/run_benchmark.py --approach approach_a`)
-
-| File Name | Audio Duration | Processing Time | Real-Time Factor (RTF) | Estimated Cost / Min | Emotional Tone | Noise Type | Quality | Overlap | Silence |
-|---|---|---|---|---|---|---|---|---|---|
-| `call_001.ogg` | 30.94s | 2.42s | 0.0782 | **$0.000169** | `upset` (high) | `none` | `clear` | `false` | `false` |
-| `call_002.ogg` | 34.96s | 1.23s | 0.0353 | **$0.000076** | `neutral` (low) | `none` | `clear` | `false` | `false` |
-| `call_003.ogg` | 171.92s | 6.40s | 0.0372 | **$0.000080** | `upset` (high) | `none` | `clear` | `false` | `true` |
-
----
-
-## 5. Cost Formula & Assumptions
-
-### Compute Cost Calculation:
-- **Hosting Environment**: Azure Container Apps Consumption Tier (Single vCPU, 2GB RAM).
-- **vCPU Compute Rate**: `$0.000036` per second of active execution.
-- **Formula**:
-  $$\text{Cost Per Audio Minute} = \frac{\text{Processing Time (sec)} \times \$0.000036}{\text{Audio Duration (sec)} / 60.0}$$
-- **Result**:
-  $$\text{Cost Per Audio Minute} = 0.0353 \times \$0.000036 \times 60.0 = \$0.000076 / \text{min}$$
-  *(Well below the $0.003000 limit).*
-
----
-
-## 6. Privacy, Security & Audio Retention Policy
-
-1. **Zero Data Egress**: Audio clips are processed strictly inside the CallScope application process memory. Audio files are never transmitted to external AI vendor endpoints.
-2. **Short Audio Retention**: Temp files extracted from ZIP batches are unlinked immediately after inference completes.
-3. **ZIP & Upload Safety**: Built-in ZIP-slip path traversal guards, 50MB upload ceiling, and 200MB uncompressed extraction limit protect against malicious archive attacks.
-
----
-
-## 7. Known Failure Modes & Future Improvements
-
-1. **Telephony Codec Compression Artifacts**: Highly compressed 8kHz AMR/G.711 telephony audio can artificially inflate spectral flatness, causing quiet speech to mimic mild background static.
-2. **Sarcasm & Tone Ambiguity**: Acoustic pitch analysis alone cannot detect polite sarcasm (e.g. "Oh, wonderful service!").
-3. **Future Enhancements with More Labeled Data**: Fine-tuning an ONNX-quantized Wav2Vec2 classifier directly on 500+ domain-specific call recordings to boost Macro F1 across ambiguous call boundaries while retaining sub-50ms CPU latency.
+## Known Limitations
+- acoustic thresholds require independent validation
+- overlap detection is heuristic rather than full diarization
+- three labeled calls do not establish statistical significance
+- hosted Azure pipelines must still be executed and smoke-tested with real infrastructure

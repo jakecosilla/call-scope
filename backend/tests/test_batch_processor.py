@@ -11,7 +11,7 @@ def test_process_zip_bytes_valid():
     zip_buffer = io.BytesIO()
     with zipfile.ZipFile(zip_buffer, "w") as zf:
         zf.writestr("test_call.wav", b"RIFF....WAVEfmt ....data....")
-        zf.writestr("labels.csv", 'name,result_json\ntest_call.wav,"{}"\n')
+        zf.writestr("labels.csv", 'name,result_json\ntest_call.wav,"{""emotional_tone"":""neutral"",""emotional_intensity"":""low"",""background_noise_present"":false,""background_noise_type"":"""",""background_noise_severity"":""none"",""audio_quality"":""clear"",""speaker_overlap_present"":false,""long_silence_present"":false,""confidence"":0.5}"\n')
 
     zip_bytes = zip_buffer.getvalue()
     batch_id, validation = BatchProcessor.process_zip_bytes(zip_bytes, approach="approach_a")
@@ -30,3 +30,32 @@ def test_process_zip_bytes_oversized_rejection():
     fake_bytes = b"0" * (51 * 1024 * 1024)
     with pytest.raises(ValueError, match="Upload size exceeds"):
         BatchProcessor.process_zip_bytes(fake_bytes)
+
+
+def test_unsafe_zip_path_is_rejected():
+    z=io.BytesIO()
+    with zipfile.ZipFile(z,"w") as f: f.writestr("../escape.wav",b"RIFF")
+    with pytest.raises(ValueError,match="unsafe path"): BatchProcessor.process_zip_bytes(z.getvalue())
+
+def test_invalid_manifest_result_json_is_rejected():
+    z=io.BytesIO()
+    with zipfile.ZipFile(z,"w") as f:
+        f.writestr("test_call.wav",b"RIFF")
+        f.writestr("labels.csv",'name,result_json\ntest_call.wav,"{}"\n')
+    with pytest.raises(ValueError,match="invalid result_json"): BatchProcessor.process_zip_bytes(z.getvalue())
+
+
+def test_process_audio_without_manifest_returns_none_validation():
+    batch_id, validation = BatchProcessor.process_zip_bytes(
+        b"RIFF....WAVEfmt ....data....", filename="test_call.wav", approach="approach_a"
+    )
+
+    assert batch_id
+    assert validation is None
+
+
+def test_standalone_csv_returns_manifest_specific_error():
+    with pytest.raises(ValueError, match="manifest, not an audio batch"):
+        BatchProcessor.process_zip_bytes(
+            b"name,result_json\ntest.wav,{}\n", filename="labels.csv", approach="approach_a"
+        )

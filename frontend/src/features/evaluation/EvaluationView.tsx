@@ -83,10 +83,10 @@ export const EvaluationView: React.FC<EvaluationViewProps> = ({ batchId }) => {
         <div className="glass-panel p-5 rounded-2xl border border-gray-800 space-y-1">
           <p className="text-xs font-semibold uppercase text-gray-400">Cost per Audio Min</p>
           <div className="flex items-center space-x-1.5">
-            <span className="text-2xl font-extrabold text-emerald-400">$0.000148</span>
-            <CheckCircle className="w-4 h-4 text-emerald-400" />
+            <span className="text-2xl font-extrabold text-emerald-400">{metrics.estimated_cost_per_audio_minute_usd == null ? 'N/A' : `$${metrics.estimated_cost_per_audio_minute_usd.toFixed(6)}`}</span>
+            {metrics.estimated_cost_per_audio_minute_usd != null && metrics.estimated_cost_per_audio_minute_usd <= 0.003 && <CheckCircle className="w-4 h-4 text-emerald-400" />}
           </div>
-          <p className="text-[11px] text-emerald-500/90 font-medium">Ceiling: $0.003000 (Passes 20x under)</p>
+          <p className="text-[11px] text-gray-500 font-medium">Assessment ceiling: $0.003000 / audio minute</p>
         </div>
       </div>
 

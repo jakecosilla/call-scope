@@ -17,6 +17,8 @@ logger = logging.getLogger(__name__)
 
 class SpeechEmotionFoundationInference:
     APPROACH_NAME = "Foundation SER Model"
+    MODEL_NAME = "superb/wav2vec2-base-superb-er"
+    _last_fallback_reason = None
     _model = None
     _processor = None
     _load_attempted = False
@@ -29,7 +31,7 @@ class SpeechEmotionFoundationInference:
             try:
                 from transformers import AutoFeatureExtractor, AutoModelForAudioClassification
 
-                model_name = "superb/wav2vec2-base-superb-er"
+                model_name = cls.MODEL_NAME
                 cls._processor = AutoFeatureExtractor.from_pretrained(model_name)
                 cls._model = AutoModelForAudioClassification.from_pretrained(model_name)
                 cls._model.eval()
@@ -50,6 +52,7 @@ class SpeechEmotionFoundationInference:
         t1 = time.perf_counter()
 
         model, processor = cls._get_model()
+        cls._last_fallback_reason = None
 
         if model and processor:
             try:
@@ -91,9 +94,11 @@ class SpeechEmotionFoundationInference:
 
                 tone, intensity = cls._map_label_to_enum(raw_label, features)
             except Exception as ex:
-                logger.error(f"Inference error in Wav2Vec2 model: {ex}")
+                logger.error("Inference error in Wav2Vec2 model")
+                cls._last_fallback_reason = f"inference_failed:{type(ex).__name__}"
                 tone, intensity, confidence_score = cls._fallback_predict(features)
         else:
+            cls._last_fallback_reason = f"model_load_failed:{cls._load_error or 'unknown'}"
             tone, intensity, confidence_score = cls._fallback_predict(features)
 
         t2 = time.perf_counter()
@@ -113,6 +118,10 @@ class SpeechEmotionFoundationInference:
         preproc_duration = t1 - t0
         inference_duration = t2 - t1
         return result, features, preproc_duration, inference_duration
+
+    @classmethod
+    def model_status(cls) -> dict[str, object | None]:
+        return {"model_name": cls.MODEL_NAME, "model_loaded": cls._model is not None, "fallback_used": cls._last_fallback_reason is not None, "fallback_reason": cls._last_fallback_reason}
 
     @classmethod
     def _map_label_to_enum(cls, raw_label: str, f: AudioFeatures) -> tuple[EmotionalTone, EmotionalIntensity]:

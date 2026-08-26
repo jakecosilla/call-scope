@@ -26,11 +26,18 @@ export const UploadSection: React.FC<UploadSectionProps> = ({ onBatchCreated }) 
 
     if (valid.length === 0) {
       setError('No supported audio files (.ogg, .wav, .mp3, .flac, .m4a) or .zip archives found.');
-      setSelectedFiles([]);
       return;
     }
 
-    setSelectedFiles(valid);
+    setSelectedFiles(current => {
+      const byKey = new Map<string, File>();
+      [...current, ...valid].forEach(file => {
+        const key = `${file.webkitRelativePath || file.name}:${file.size}:${file.lastModified}`;
+        byKey.set(key, file);
+      });
+      return Array.from(byKey.values());
+    });
+    setManifestValidation(null);
     setError(null);
   };
 
@@ -49,6 +56,27 @@ export const UploadSection: React.FC<UploadSectionProps> = ({ onBatchCreated }) 
 
   const handleStartAnalysis = async () => {
     if (selectedFiles.length === 0) return;
+
+    const csvFiles = selectedFiles.filter(file => file.name.toLowerCase().endsWith('.csv'));
+    const zipFiles = selectedFiles.filter(file => file.name.toLowerCase().endsWith('.zip'));
+    const audioFiles = selectedFiles.filter(file => {
+      const ext = file.name.substring(file.name.lastIndexOf('.')).toLowerCase();
+      return ext !== '.csv' && ext !== '.zip';
+    });
+
+    if (csvFiles.length > 1) {
+      setError('Only one CSV manifest is supported per batch.');
+      return;
+    }
+    if (zipFiles.length > 0 && selectedFiles.length > 1) {
+      setError('Upload a ZIP archive by itself, or select audio files/folder with an optional labels.csv manifest.');
+      return;
+    }
+    if (zipFiles.length === 0 && audioFiles.length === 0) {
+      setError('labels.csv is a manifest. Add at least one audio file or select an audio folder before starting analysis.');
+      return;
+    }
+
     setUploading(true);
     setError(null);
 
@@ -60,8 +88,8 @@ export const UploadSection: React.FC<UploadSectionProps> = ({ onBatchCreated }) 
       } else {
         const zip = new JSZip();
         selectedFiles.forEach(f => {
-          const cleanName = f.name.split('/').pop() || f.name;
-          zip.file(cleanName, f);
+          const relativePath = f.webkitRelativePath || f.name;
+          zip.file(relativePath, f);
         });
         const zipBlob = await zip.generateAsync({ type: 'blob' });
         uploadFile = new File([zipBlob], 'callscope_batch.zip', { type: 'application/zip' });
@@ -138,6 +166,7 @@ export const UploadSection: React.FC<UploadSectionProps> = ({ onBatchCreated }) 
           onChange={handleFileChange}
           className="hidden"
         />
+        <input type="file" id="batch-folder-input" webkitdirectory="" multiple onChange={handleFileChange} className="hidden" />
 
         {selectedFiles.length > 0 ? (
           <div className="flex flex-col items-center space-y-3">
@@ -158,7 +187,7 @@ export const UploadSection: React.FC<UploadSectionProps> = ({ onBatchCreated }) 
               htmlFor="batch-file-input"
               className="text-xs text-blue-400 hover:text-blue-300 cursor-pointer font-medium"
             >
-              Choose different files
+              Add or choose files
             </label>
           </div>
         ) : (
@@ -175,12 +204,10 @@ export const UploadSection: React.FC<UploadSectionProps> = ({ onBatchCreated }) 
               </p>
             </div>
             <div className="pt-2">
-              <label
-                htmlFor="batch-file-input"
-                className="px-6 py-2.5 bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold rounded-xl cursor-pointer shadow-md shadow-blue-500/20 transition-all inline-block"
-              >
-                Browse Files
-              </label>
+              <div className="flex flex-wrap justify-center gap-2">
+                <label htmlFor="batch-file-input" className="px-6 py-2.5 bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold rounded-xl cursor-pointer shadow-md shadow-blue-500/20 transition-all inline-block">Browse Files</label>
+                <label htmlFor="batch-folder-input" className="px-6 py-2.5 bg-gray-800 hover:bg-gray-700 text-gray-100 text-xs font-semibold rounded-xl cursor-pointer border border-gray-700 transition-all inline-block">Browse Folder</label>
+              </div>
             </div>
           </div>
         )}

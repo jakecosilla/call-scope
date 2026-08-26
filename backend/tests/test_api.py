@@ -8,7 +8,7 @@ client = TestClient(app)
 def get_auth_header() -> dict[str, str]:
     login_resp = client.post(
         "/api/auth/login",
-        json={"username": "evaluator@callscope.ai", "password": "CallScope2026!EvalSecret"},
+        json={"username": "evaluator@example.test", "password": "test-only-password"},
     )
     token = login_resp.json()["access_token"]
     return {"Authorization": f"Bearer {token}"}
@@ -25,18 +25,18 @@ def test_health_check_endpoint():
 def test_auth_login_success():
     response = client.post(
         "/api/auth/login",
-        json={"username": "evaluator@callscope.ai", "password": "CallScope2026!EvalSecret"},
+        json={"username": "evaluator@example.test", "password": "test-only-password"},
     )
     assert response.status_code == 200
     data = response.json()
     assert "access_token" in data
-    assert data["username"] == "evaluator@callscope.ai"
+    assert data["username"] == "evaluator@example.test"
 
 
 def test_auth_login_failure():
     response = client.post(
         "/api/auth/login",
-        json={"username": "evaluator@callscope.ai", "password": "WrongPassword"},
+        json={"username": "evaluator@example.test", "password": "WrongPassword"},
     )
     assert response.status_code == 401
 
@@ -69,3 +69,8 @@ def test_create_batch_unsupported_format_rejected():
     )
     assert response.status_code == 400
     assert "Unsupported file format" in response.json()["detail"]
+
+
+def test_demo_backdoor_credentials_are_rejected():
+    response = client.post("/api/auth/login", json={"username":"admin","password":"admin123"})
+    assert response.status_code == 401

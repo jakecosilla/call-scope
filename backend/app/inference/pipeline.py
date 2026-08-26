@@ -1,12 +1,13 @@
 import time
 from typing import Literal
 
+from app.config import CONTAINER_MEMORY_GIB, CPU_COST_PER_SECOND, MEMORY_GIB_COST_PER_SECOND
+
 from app.domain.schema import InternalInferenceMetadata, PredictionResult
 from app.inference.approach_a import AcousticPipelineInference
 from app.inference.approach_b import SpeechEmotionFoundationInference
 
-PIPELINE_VERSION = "2026-08-26.1"
-CPU_CONTAINER_APP_COST_PER_SEC = 0.000036
+PIPELINE_VERSION = "2026-08-27.1"
 
 
 class InferencePipeline:
@@ -19,11 +20,16 @@ class InferencePipeline:
     ) -> tuple[PredictionResult, InternalInferenceMetadata]:
         t0 = time.perf_counter()
 
+        model_name = None
+        fallback_used = False
+        fallback_reason = None
         if approach == "approach_b":
-            prediction, features, preproc_time, infer_time = SpeechEmotionFoundationInference.predict(
-                audio_bytes, filename
-            )
+            prediction, features, preproc_time, infer_time = SpeechEmotionFoundationInference.predict(audio_bytes, filename)
             approach_name = SpeechEmotionFoundationInference.APPROACH_NAME
+            model_status = SpeechEmotionFoundationInference.model_status()
+            model_name = str(model_status["model_name"])
+            fallback_used = bool(model_status["fallback_used"])
+            fallback_reason = str(model_status["fallback_reason"]) if model_status["fallback_reason"] else None
         else:
             prediction, features, preproc_time, infer_time = AcousticPipelineInference.predict(
                 audio_bytes, filename
@@ -36,13 +42,17 @@ class InferencePipeline:
         audio_duration = features.duration_seconds if features.duration_seconds > 0 else 1.0
         rtf = total_duration / audio_duration
 
-        estimated_cost_usd = total_duration * CPU_CONTAINER_APP_COST_PER_SEC
+        estimated_cost_usd = total_duration * (CPU_COST_PER_SECOND + MEMORY_GIB_COST_PER_SECOND * CONTAINER_MEMORY_GIB)
         audio_minutes = audio_duration / 60.0
         cost_per_audio_minute = estimated_cost_usd / audio_minutes if audio_minutes > 0 else 0.0
 
         metadata = InternalInferenceMetadata(
             pipeline_version=PIPELINE_VERSION,
             approach=approach_name,
+            requested_approach=approach,
+            model_name=model_name,
+            fallback_used=fallback_used,
+            fallback_reason=fallback_reason,
             preprocessing_duration_seconds=round(preproc_time, 4),
             inference_duration_seconds=round(infer_time, 4),
             total_duration_seconds=round(total_duration, 4),

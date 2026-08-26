@@ -1,4 +1,4 @@
-# CallScope AI — Voice Tone & Background Noise Analysis Platform
+# CallScope — Voice Tone & Background Noise Analysis Platform
 
 Production-ready hosted submission for the Software Engineer Assessment.
 
@@ -138,7 +138,7 @@ python -m uvicorn app.main:app --reload --port 8000
 Open a new terminal window:
 ```bash
 cd frontend
-npm install
+npm ci
 npm run dev
 ```
 *(Frontend application will run at `http://localhost:3000`).*
@@ -150,7 +150,6 @@ npm run dev
 Access to the local or hosted dashboard is secured using JWT authentication.
 
 - Credentials are dynamically configured via environment variables (`EVALUATOR_USERNAME` and `EVALUATOR_PASSWORD` in `.env`).
-- For local evaluation and testing, the web dashboard includes a one-click **"Auto-fill Evaluator Credentials"** button.
 
 ---
 
@@ -162,11 +161,14 @@ LOG_LEVEL=INFO
 API_PORT=8000
 FRONTEND_ORIGIN=http://localhost:3000
 JWT_SECRET_KEY=your_random_32byte_secret_key_here
-EVALUATOR_USERNAME=evaluator@callscope.ai
+EVALUATOR_USERNAME=evaluator@example.com
 EVALUATOR_PASSWORD=your_secure_password_here
 DEFAULT_APPROACH=approach_a
 CPU_CONTAINER_APP_COST_PER_SEC=0.000036
-AUDIO_RETENTION_DAYS=7
+MEMORY_GIB_COST_PER_SEC=0.000004
+CONTAINER_MEMORY_GIB=2
+MAX_CONCURRENT_INFERENCE=1
+SQLITE_DB_PATH=/tmp/callscope/callscope.db
 ```
 
 ---
@@ -202,6 +204,19 @@ From the `frontend` directory:
 ```bash
 cd frontend
 npm test
+```
+
+### End-to-End Tests (Playwright)
+
+Install the Playwright browser once after `npm ci`:
+```bash
+cd frontend
+npx playwright install chromium
+```
+
+Then run:
+```bash
+npm run test:e2e
 ```
 
 ---
@@ -259,3 +274,28 @@ Merging to `main` triggers `.github/workflows/deploy-prod.yml`:
 - **Measured RTF**: `0.0353` (Processes 1 minute of audio in ~2.1 seconds on 1 vCPU).
 - **Inference Cost**: **$0.000076 / audio minute** (39x under the $0.003 cost ceiling).
 - **Data Privacy**: Audio is processed entirely in memory; zero egress to external APIs.
+## Frontend Toolchain (Vite 8)
+
+The frontend uses a coordinated Vite 8 toolchain:
+
+- Node.js `^20.19.0 || >=22.12.0`
+- Vite `^8.2.2`
+- `@vitejs/plugin-react` `^6.0.4`
+- Vitest `^4.1.11`
+- Playwright `^1.62.0`
+
+After switching from an older Vite lockfile, generate a fresh compatible lockfile once:
+
+```bash
+cd frontend
+rm -rf node_modules package-lock.json
+npm install
+npm run typecheck
+npm run lint
+npm run test
+npm run build
+npx playwright install chromium
+npm run test:e2e
+```
+
+Commit the newly generated `frontend/package-lock.json`. Once the lockfile is committed, CI should use `npm ci` for reproducible installs. Do not use `npm audit fix --force` to perform unattended major-version upgrades; review and upgrade related build-tool packages together.
