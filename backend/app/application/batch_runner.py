@@ -72,7 +72,7 @@ class BatchProcessor:
 
         store.create_batch(batch_id, total_files=len(audio_files), created_at=created_at)
 
-        manifest_validation = {}
+        manifest_validation = None
         if manifest_content:
             ground_truth = ModelEvaluator.parse_manifest(manifest_content)
             store.set_ground_truth(batch_id, ground_truth)

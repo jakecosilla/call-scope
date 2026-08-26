@@ -9,10 +9,35 @@ interface ResultsTableProps {
 
 export const ResultsTable: React.FC<ResultsTableProps> = ({ batch }) => {
   const [searchTerm, setSearchTerm] = useState('');
+  const [downloading, setDownloading] = useState<'csv' | 'json' | null>(null);
 
   const filteredFiles = batch.files.filter((f) =>
     f.filename.toLowerCase().includes(searchTerm.toLowerCase())
   );
+
+  const handleDownloadCsv = async () => {
+    try {
+      setDownloading('csv');
+      const url = ApiClient.getExportCsvUrl(batch.batch_id);
+      await ApiClient.fetchExport(url, `callscope_${batch.batch_id}_results.csv`);
+    } catch (err) {
+      console.error('Failed to download CSV:', err);
+    } finally {
+      setDownloading(null);
+    }
+  };
+
+  const handleDownloadJson = async () => {
+    try {
+      setDownloading('json');
+      const url = ApiClient.getExportJsonUrl(batch.batch_id);
+      await ApiClient.fetchExport(url, `callscope_${batch.batch_id}_results.json`);
+    } catch (err) {
+      console.error('Failed to download JSON:', err);
+    } finally {
+      setDownloading(null);
+    }
+  };
 
   const getToneBadge = (tone?: string) => {
     switch (tone) {
@@ -62,23 +87,25 @@ export const ResultsTable: React.FC<ResultsTableProps> = ({ batch }) => {
             className="bg-gray-900/80 border border-gray-800 rounded-xl px-3 py-1.5 text-xs text-white placeholder-gray-500 focus:outline-none focus:border-blue-500"
           />
 
-          <a
-            href={ApiClient.getExportCsvUrl(batch.batch_id)}
-            download
-            className="px-3 py-1.5 bg-blue-600/20 hover:bg-blue-600/30 text-blue-400 border border-blue-500/30 rounded-xl text-xs font-semibold flex items-center space-x-1.5 transition"
+          <button
+            type="button"
+            onClick={handleDownloadCsv}
+            disabled={downloading === 'csv'}
+            className="px-3 py-1.5 bg-blue-600/20 hover:bg-blue-600/30 text-blue-400 border border-blue-500/30 rounded-xl text-xs font-semibold flex items-center space-x-1.5 transition cursor-pointer disabled:opacity-50"
           >
             <FileSpreadsheet className="w-3.5 h-3.5" />
-            <span>Download CSV</span>
-          </a>
+            <span>{downloading === 'csv' ? 'Downloading...' : 'Download CSV'}</span>
+          </button>
 
-          <a
-            href={ApiClient.getExportJsonUrl(batch.batch_id)}
-            download
-            className="px-3 py-1.5 bg-purple-600/20 hover:bg-purple-600/30 text-purple-400 border border-purple-500/30 rounded-xl text-xs font-semibold flex items-center space-x-1.5 transition"
+          <button
+            type="button"
+            onClick={handleDownloadJson}
+            disabled={downloading === 'json'}
+            className="px-3 py-1.5 bg-purple-600/20 hover:bg-purple-600/30 text-purple-400 border border-purple-500/30 rounded-xl text-xs font-semibold flex items-center space-x-1.5 transition cursor-pointer disabled:opacity-50"
           >
             <FileCode className="w-3.5 h-3.5" />
-            <span>Download JSON</span>
-          </a>
+            <span>{downloading === 'json' ? 'Downloading...' : 'Download JSON'}</span>
+          </button>
         </div>
       </div>
 
