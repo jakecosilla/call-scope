@@ -1,0 +1,76 @@
+name: Pull Request CI
+
+on:
+  pull_request:
+    branches: [ develop, main ]
+
+jobs:
+  frontend-checks:
+    name: Frontend Lint, Typecheck & Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+          cache-dependency-path: frontend/package.json
+
+      - name: Install Frontend Dependencies
+        run: npm --prefix frontend ci
+
+      - name: Run ESLint
+        run: npm --prefix frontend run lint
+
+      - name: Run TypeScript Type Check
+        run: npm --prefix frontend run typecheck
+
+      - name: Run Vitest Unit Tests
+        run: npm --prefix frontend test
+
+      - name: Build Frontend Production Artifact
+        run: npm --prefix frontend run build
+
+  backend-checks:
+    name: Backend Ruff, Mypy, Pytest & ML Contracts
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+
+      - name: Install FFmpeg & Audio System Libraries
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ffmpeg libsndfile1
+
+      - name: Install Backend Dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r backend/requirements.txt
+
+      - name: Run Ruff Linter
+        run: |
+          ruff check backend/app backend/tests
+
+      - name: Run Mypy Static Type Checker
+        run: |
+          PYTHONPATH=backend mypy backend/app
+
+      - name: Run Pytest Unit Tests with Coverage
+        run: |
+          PYTHONPATH=backend pytest --cov=app backend/tests
+
+      - name: Validate Assessment Benchmark Fixtures
+        run: |
+          PYTHONPATH=backend python scratch/run_benchmark.py
+
+      - name: Validate Backend Docker Build
+        run: |
+          docker build -t callscope-backend:test ./backend

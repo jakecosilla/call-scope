@@ -1,0 +1,41 @@
+name: Deploy PROD
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  deploy-prod:
+    name: Promote Immutable Image to Azure PROD
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Log in to Azure Container Registry
+        uses: azure/docker-login@v1
+        with:
+          login-server: ${{ secrets.ACR_LOGIN_SERVER }}
+          username: ${{ secrets.ACR_USERNAME }}
+          password: ${{ secrets.ACR_PASSWORD }}
+
+      - name: Promote Immutable Image
+        run: |
+          IMAGE_TAG=${GITHUB_SHA::7}
+          docker build -t ${{ secrets.ACR_LOGIN_SERVER }}/callscope-api:sha-${IMAGE_TAG} ./backend
+          docker push ${{ secrets.ACR_LOGIN_SERVER }}/callscope-api:sha-${IMAGE_TAG}
+
+      - name: Azure Container App Production Deploy
+        uses: azure/CLI@v1
+        with:
+          inlineScript: |
+            IMAGE_TAG=${GITHUB_SHA::7}
+            az containerapp update \
+              --name callscope-api-prod \
+              --resource-group rg-callscope-prod \
+              --image ${{ secrets.ACR_LOGIN_SERVER }}/callscope-api:sha-${IMAGE_TAG}
+
+      - name: Production Smoke Check
+        run: |
+          curl -f https://api.callscope.ai/api/health || exit 1

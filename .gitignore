@@ -1,0 +1,48 @@
+# Assessment confidential files
+Software Engineer Assessment/
+
+# Virtual Environments
+.venv/
+backend/.venv/
+**/.venv/
+venv/
+ENV/
+
+# Binaries & Compiled Executables
+*.bin
+*.exe
+*.dll
+*.so
+*.dylib
+*.pyd
+bin/
+**/bin/
+
+# Python Compiled & Cache
+__pycache__/
+/**/__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+*.egg-info/
+
+# Node / Frontend Build Artifacts
+node_modules/
+**/node_modules/
+dist/
+**/dist/
+.vite/
+*.log
+
+# Environment variables
+.env
+.env.local
+
+# OS / Editor
+.DS_Store
+Thumbs.db
+.idea/
