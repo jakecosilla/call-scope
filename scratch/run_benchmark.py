@@ -1,6 +1,7 @@
 import io
 import math
 import os
+import platform
 import sys
 import wave
 from typing import Literal
@@ -9,6 +10,7 @@ backend_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "ba
 if backend_path not in sys.path:
     sys.path.insert(0, backend_path)
 
+from app.evaluation.evaluator import ModelEvaluator
 from app.inference.pipeline import InferencePipeline
 
 
@@ -29,9 +31,17 @@ def generate_synthetic_audio_bytes(duration_seconds: float = 5.0, sample_rate: i
 
 def run_benchmark(approach: Literal["approach_a", "approach_b"] = "approach_a"):
     assessment_dir = os.path.abspath("Software Engineer Assessment")
+    labels_file = os.path.join(assessment_dir, "labels.csv")
     calls = ["call_001.ogg", "call_002.ogg", "call_003.ogg"]
 
-    print(f"=== CALLSCOPE ASSESSMENT CALLS BENCHMARK (Approach: {approach}) ===")
+    print("================================================================================")
+    print(f"CALLSCOPE REPRODUCIBLE BENCHMARK & ACCURACY REPORT (Approach: {approach})")
+    print("================================================================================")
+    print(f"System Environment : {platform.platform()} | Python {platform.python_version()}")
+    print(f"CPU Architecture   : {platform.machine()} ({os.cpu_count()} vCPUs available)")
+    print("================================================================================")
+
+    predictions = {}
 
     if os.path.exists(assessment_dir) and all(
         os.path.exists(os.path.join(assessment_dir, c)) for c in calls
@@ -42,24 +52,50 @@ def run_benchmark(approach: Literal["approach_a", "approach_b"] = "approach_a"):
                 audio_bytes = f.read()
 
             pred, meta = InferencePipeline.analyze_audio(audio_bytes, call_file, approach=approach)
+            predictions[call_file] = pred
+
             print(f"\n[File: {call_file}]")
-            print(f"Prediction: {pred.model_dump_json()}")
+            print(f"Prediction : {pred.model_dump_json()}")
             print(
-                f"Audio Duration: {meta.audio_duration_seconds}s | Process Time: {meta.total_duration_seconds}s | RTF: {meta.real_time_factor}"
+                f"Timing     : Audio {meta.audio_duration_seconds}s | Preprocess {meta.preprocessing_duration_seconds}s | Inference {meta.inference_duration_seconds}s | Total {meta.total_duration_seconds}s | RTF {meta.real_time_factor}"
             )
-            print(f"Estimated Cost / Min: ${meta.estimated_cost_per_audio_minute_usd:.6f}")
+            print(f"Est Cost   : ${meta.estimated_cost_per_audio_minute_usd:.6f} / audio minute")
+
+        if os.path.exists(labels_file):
+            with open(labels_file, "r", encoding="utf-8") as f:
+                manifest_content = f.read()
+
+            ground_truth = ModelEvaluator.parse_manifest(manifest_content)
+            metrics = ModelEvaluator.evaluate(predictions, ground_truth)
+
+            print("\n--------------------------------------------------------------------------------")
+            print("GROUND TRUTH EVALUATION METRICS:")
+            print("--------------------------------------------------------------------------------")
+            print(f"Total Clips Evaluated       : {metrics.get('total_evaluated', 0)}")
+            print(f"Emotional Tone Accuracy     : {metrics.get('emotional_tone_accuracy', 0.0) * 100:.1f}%")
+            print(f"Emotional Tone Macro F1     : {metrics.get('emotional_tone_macro_f1', 0.0):.4f}")
+            print(f"Emotional Intensity Acc     : {metrics.get('emotional_intensity_accuracy', 0.0) * 100:.1f}%")
+            print(f"Background Noise Present Acc: {metrics.get('background_noise_present_accuracy', 0.0) * 100:.1f}%")
+            print(f"Background Noise Severity Acc: {metrics.get('background_noise_severity_accuracy', 0.0) * 100:.1f}%")
+            print(f"Audio Quality Accuracy      : {metrics.get('audio_quality_accuracy', 0.0) * 100:.1f}%")
+            print(f"Speaker Overlap Accuracy    : {metrics.get('speaker_overlap_accuracy', 0.0) * 100:.1f}%")
+            print(f"Long Silence Accuracy       : {metrics.get('long_silence_accuracy', 0.0) * 100:.1f}%")
+            print("--------------------------------------------------------------------------------")
+            print("Confusion Matrix (Emotional Tone):")
+            print(metrics.get("confusion_matrix", {}))
+            print("--------------------------------------------------------------------------------")
     else:
-        print("[INFO] Assessment fixtures directory not found. Running synthetic CI audio benchmark...")
+        print("\n[INFO] Assessment fixtures directory not found. Running synthetic audio benchmark...")
         synthetic_bytes = generate_synthetic_audio_bytes(duration_seconds=5.0)
         pred, meta = InferencePipeline.analyze_audio(
             synthetic_bytes, "synthetic_test_call.wav", approach=approach
         )
         print("\n[File: synthetic_test_call.wav]")
-        print(f"Prediction: {pred.model_dump_json()}")
+        print(f"Prediction : {pred.model_dump_json()}")
         print(
-            f"Audio Duration: {meta.audio_duration_seconds}s | Process Time: {meta.total_duration_seconds}s | RTF: {meta.real_time_factor}"
+            f"Timing     : Preprocess {meta.preprocessing_duration_seconds}s | Inference {meta.inference_duration_seconds}s | Total {meta.total_duration_seconds}s | RTF {meta.real_time_factor}"
         )
-        print(f"Estimated Cost / Min: ${meta.estimated_cost_per_audio_minute_usd:.6f}")
+        print(f"Est Cost   : ${meta.estimated_cost_per_audio_minute_usd:.6f} / audio minute")
 
     print("\n=== BENCHMARK COMPLETE ===")
 

@@ -145,7 +145,9 @@ class BatchProcessor:
         for filename, audio_bytes in audio_files.items():
             file_id = str(uuid.uuid4())
             try:
-                prediction, metadata = InferencePipeline.analyze_audio(audio_bytes, filename, approach=approach)
+                prediction, metadata = await asyncio.to_thread(
+                    InferencePipeline.analyze_audio, audio_bytes, filename, approach=approach
+                )
                 file_result = CallAnalysisFileResult(
                     file_id=file_id,
                     filename=filename,

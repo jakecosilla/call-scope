@@ -34,6 +34,21 @@ export const UploadSection: React.FC<UploadSectionProps> = ({ onBatchCreated }) 
     }
   };
 
+  const handleFolderChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files.length > 0) {
+      const files = Array.from(e.target.files);
+      const audioOrZip = files.find(f => {
+        const ext = f.name.substring(f.name.lastIndexOf('.')).toLowerCase();
+        return ALLOWED_EXTENSIONS.includes(ext);
+      });
+      if (audioOrZip) {
+        validateFile(audioOrZip);
+      } else {
+        setError('No supported audio files (.ogg, .wav, .mp3, .zip) found in the selected folder.');
+      }
+    }
+  };
+
   const handleDrop = (e: React.DragEvent) => {
     e.preventDefault();
     if (e.dataTransfer.files && e.dataTransfer.files[0]) {
@@ -68,12 +83,12 @@ export const UploadSection: React.FC<UploadSectionProps> = ({ onBatchCreated }) 
             <FolderArchive className="w-5 h-5 text-blue-400" />
             <span>Upload Evaluation Batch</span>
           </h2>
-          <p className="text-sm text-gray-400 mt-0.5">
-            Upload a ZIP archive or folder containing production call audio clips (.ogg, .wav, .mp3) and optional labels.csv
+          <p className="text-xs text-gray-400 mt-1">
+            Upload single call clips or batch archives for complete acoustic & prosody analysis.
           </p>
         </div>
 
-        <div className="flex items-center space-x-2 bg-gray-900/80 p-1.5 rounded-xl border border-gray-800 self-start md:self-auto">
+        <div className="flex items-center bg-gray-900/80 p-1.5 rounded-xl border border-gray-800 self-start md:self-auto">
           <button
             type="button"
             onClick={() => setApproach('approach_a')}
@@ -118,6 +133,17 @@ export const UploadSection: React.FC<UploadSectionProps> = ({ onBatchCreated }) 
           className="hidden"
         />
 
+        <input
+          type="file"
+          // @ts-ignore Standard webkit directory attribute
+          webkitdirectory=""
+          directory=""
+          multiple
+          id="batch-folder-input"
+          onChange={handleFolderChange}
+          className="hidden"
+        />
+
         {file ? (
           <div className="flex flex-col items-center space-y-3">
             <div className="w-12 h-12 rounded-xl bg-blue-500/20 text-blue-400 flex items-center justify-center">
@@ -125,29 +151,52 @@ export const UploadSection: React.FC<UploadSectionProps> = ({ onBatchCreated }) 
             </div>
             <div>
               <p className="text-base font-semibold text-white">{file.name}</p>
-              <p className="text-xs text-gray-400">{(file.size / (1024 * 1024)).toFixed(2)} MB archive ready for analysis</p>
+              <p className="text-xs text-gray-400">{(file.size / (1024 * 1024)).toFixed(2)} MB file ready for analysis</p>
             </div>
-            <label
-              htmlFor="batch-file-input"
-              className="text-xs text-blue-400 hover:text-blue-300 cursor-pointer font-medium"
-            >
-              Choose different file
-            </label>
+            <div className="flex items-center space-x-4">
+              <label
+                htmlFor="batch-file-input"
+                className="text-xs text-blue-400 hover:text-blue-300 cursor-pointer font-medium"
+              >
+                Choose different file
+              </label>
+              <span className="text-xs text-gray-600">|</span>
+              <label
+                htmlFor="batch-folder-input"
+                className="text-xs text-purple-400 hover:text-purple-300 cursor-pointer font-medium"
+              >
+                Select folder
+              </label>
+            </div>
           </div>
         ) : (
-          <label htmlFor="batch-file-input" className="cursor-pointer flex flex-col items-center space-y-3">
+          <div className="flex flex-col items-center space-y-3">
             <div className="w-12 h-12 rounded-xl bg-gray-800 text-gray-400 flex items-center justify-center">
               <Upload className="w-6 h-6" />
             </div>
             <div>
               <p className="text-sm font-semibold text-gray-200">
-                Drag & drop evaluation batch <span className="text-blue-400">ZIP</span> or browse files
+                Drag & drop evaluation audio clips / <span className="text-blue-400">ZIP</span> archive
               </p>
               <p className="text-xs text-gray-400 mt-1">
-                Supported formats: .ogg, .wav, .mp3 with optional labels.csv manifest
+                Supported formats: .ogg, .wav, .mp3, .flac, .m4a with optional labels.csv manifest
               </p>
             </div>
-          </label>
+            <div className="flex items-center space-x-3 pt-2">
+              <label
+                htmlFor="batch-file-input"
+                className="px-4 py-2 bg-gray-800 hover:bg-gray-700 text-gray-200 text-xs font-semibold rounded-lg cursor-pointer border border-gray-700 transition-all"
+              >
+                Browse Files
+              </label>
+              <label
+                htmlFor="batch-folder-input"
+                className="px-4 py-2 bg-purple-900/30 hover:bg-purple-900/50 text-purple-300 text-xs font-semibold rounded-lg cursor-pointer border border-purple-700/50 transition-all"
+              >
+                Select Folder
+              </label>
+            </div>
+          </div>
         )}
       </div>
 
@@ -159,32 +208,41 @@ export const UploadSection: React.FC<UploadSectionProps> = ({ onBatchCreated }) 
       )}
 
       {manifestValidation && (
-        <div className="p-4 rounded-xl bg-gray-900/80 border border-gray-800 text-sm space-y-2">
-          <div className="flex items-center space-x-2 text-emerald-400 font-semibold">
-            <CheckCircle2 className="w-4 h-4" />
-            <span>CSV Manifest Verified ({manifestValidation.matched_files} matched files)</span>
+        <div className="p-4 rounded-xl bg-gray-900/90 border border-gray-800 text-xs space-y-2">
+          <div className="flex items-center justify-between text-gray-300 font-semibold">
+            <span className="flex items-center space-x-1.5">
+              <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+              <span>Manifest Summary</span>
+            </span>
+            <span>{manifestValidation.matched_files} / {manifestValidation.total_manifest_rows} clips matched</span>
           </div>
           {manifestValidation.unmatched_audio_files.length > 0 && (
-            <p className="text-xs text-amber-400">
-              Unmatched Audio Files: {manifestValidation.unmatched_audio_files.join(', ')}
-            </p>
+            <p className="text-amber-400">Unmatched audio clips: {manifestValidation.unmatched_audio_files.join(', ')}</p>
+          )}
+          {manifestValidation.missing_audio_files.length > 0 && (
+            <p className="text-rose-400">Missing audio clips: {manifestValidation.missing_audio_files.join(', ')}</p>
           )}
         </div>
       )}
 
       <div className="flex justify-end">
         <button
-          onClick={handleStartAnalysis}
+          type="button"
           disabled={!file || uploading}
-          className="px-6 py-2.5 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white text-sm font-medium rounded-xl shadow-lg shadow-blue-500/20 disabled:opacity-50 transition-all flex items-center space-x-2"
+          onClick={handleStartAnalysis}
+          className={`px-6 py-2.5 rounded-xl font-semibold text-sm transition-all flex items-center space-x-2 ${
+            file && !uploading
+              ? 'bg-blue-600 hover:bg-blue-500 text-white shadow-lg shadow-blue-500/25 cursor-pointer'
+              : 'bg-gray-800 text-gray-500 cursor-not-allowed border border-gray-700'
+          }`}
         >
           {uploading ? (
-            <span>Extracting & Processing Batch...</span>
-          ) : (
             <>
-              <Upload className="w-4 h-4" />
-              <span>Start Batch Analysis</span>
+              <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+              <span>Uploading & Analyzing...</span>
             </>
+          ) : (
+            <span>Start Analysis Batch</span>
           )}
         </button>
       </div>

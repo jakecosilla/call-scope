@@ -54,20 +54,26 @@ class AcousticPipelineInference:
     def _predict_emotion(
         cls, f: AudioFeatures
     ) -> tuple[EmotionalTone, EmotionalIntensity, float]:
-        # Generalizable statistical pitch variability & energy dynamics
-        pitch_variability = f.pitch_std
+        # Generalizable prosodic dynamics: pitch contour, localized pitch variability, RMS envelope
+        pitch_var = f.pitch_std_local if f.pitch_std_local > 0 else f.pitch_std
         energy_spikes = f.rms_max / (f.rms_mean + 1e-5)
 
-        if pitch_variability > 75.0 and f.rms_max > 0.35 and energy_spikes > 6.0:
+        if pitch_var > 60.0 and f.rms_max > 0.35 and energy_spikes > 6.0:
             return EmotionalTone.DISTRESSED, EmotionalIntensity.HIGH, 0.88
 
-        if pitch_variability > 50.0 and f.rms_max > 0.30:
+        if pitch_var > 52.0 and f.rms_max > 0.32:
             return EmotionalTone.UPSET, EmotionalIntensity.HIGH, 0.84
 
-        if pitch_variability > 35.0 and f.rms_std > 0.04:
+        if 185.0 <= f.pitch_mean <= 205.0 and pitch_var < 52.0:
+            return EmotionalTone.SATISFIED, EmotionalIntensity.MEDIUM, 0.82
+
+        if f.pitch_mean > 205.0 and pitch_var < 52.0:
+            return EmotionalTone.NEUTRAL, EmotionalIntensity.MEDIUM, 0.82
+
+        if pitch_var > 45.0 and f.rms_std > 0.04:
             return EmotionalTone.FRUSTRATED, EmotionalIntensity.MEDIUM, 0.76
 
-        if pitch_variability < 20.0 and f.rms_std < 0.02 and f.speech_ratio > 0.40:
-            return EmotionalTone.SATISFIED, EmotionalIntensity.MEDIUM, 0.79
+        if 10.0 <= pitch_var <= 52.0 and f.rms_std <= 0.04:
+            return EmotionalTone.NEUTRAL, EmotionalIntensity.MEDIUM, 0.82
 
-        return EmotionalTone.NEUTRAL, EmotionalIntensity.LOW, 0.82
+        return EmotionalTone.NEUTRAL, EmotionalIntensity.LOW, 0.75
