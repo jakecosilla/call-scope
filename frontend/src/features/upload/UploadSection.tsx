@@ -34,21 +34,6 @@ export const UploadSection: React.FC<UploadSectionProps> = ({ onBatchCreated }) 
     }
   };
 
-  const handleFolderChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files && e.target.files.length > 0) {
-      const files = Array.from(e.target.files);
-      const audioOrZip = files.find(f => {
-        const ext = f.name.substring(f.name.lastIndexOf('.')).toLowerCase();
-        return ALLOWED_EXTENSIONS.includes(ext);
-      });
-      if (audioOrZip) {
-        validateFile(audioOrZip);
-      } else {
-        setError('No supported audio files (.ogg, .wav, .mp3, .zip) found in the selected folder.');
-      }
-    }
-  };
-
   const handleDrop = (e: React.DragEvent) => {
     e.preventDefault();
     if (e.dataTransfer.files && e.dataTransfer.files[0]) {
@@ -133,17 +118,6 @@ export const UploadSection: React.FC<UploadSectionProps> = ({ onBatchCreated }) 
           className="hidden"
         />
 
-        <input
-          type="file"
-          // @ts-ignore Standard webkit directory attribute
-          webkitdirectory=""
-          directory=""
-          multiple
-          id="batch-folder-input"
-          onChange={handleFolderChange}
-          className="hidden"
-        />
-
         {file ? (
           <div className="flex flex-col items-center space-y-3">
             <div className="w-12 h-12 rounded-xl bg-blue-500/20 text-blue-400 flex items-center justify-center">
@@ -153,21 +127,12 @@ export const UploadSection: React.FC<UploadSectionProps> = ({ onBatchCreated }) 
               <p className="text-base font-semibold text-white">{file.name}</p>
               <p className="text-xs text-gray-400">{(file.size / (1024 * 1024)).toFixed(2)} MB file ready for analysis</p>
             </div>
-            <div className="flex items-center space-x-4">
-              <label
-                htmlFor="batch-file-input"
-                className="text-xs text-blue-400 hover:text-blue-300 cursor-pointer font-medium"
-              >
-                Choose different file
-              </label>
-              <span className="text-xs text-gray-600">|</span>
-              <label
-                htmlFor="batch-folder-input"
-                className="text-xs text-purple-400 hover:text-purple-300 cursor-pointer font-medium"
-              >
-                Select folder
-              </label>
-            </div>
+            <label
+              htmlFor="batch-file-input"
+              className="text-xs text-blue-400 hover:text-blue-300 cursor-pointer font-medium"
+            >
+              Choose different file
+            </label>
           </div>
         ) : (
           <div className="flex flex-col items-center space-y-3">
@@ -176,24 +141,18 @@ export const UploadSection: React.FC<UploadSectionProps> = ({ onBatchCreated }) 
             </div>
             <div>
               <p className="text-sm font-semibold text-gray-200">
-                Drag & drop evaluation audio clips / <span className="text-blue-400">ZIP</span> archive
+                Drag & drop evaluation audio clip or <span className="text-blue-400">ZIP</span> archive
               </p>
               <p className="text-xs text-gray-400 mt-1">
-                Supported formats: .ogg, .wav, .mp3, .flac, .m4a with optional labels.csv manifest
+                Supported formats: .ogg, .wav, .mp3, .flac, .m4a, .zip with optional labels.csv manifest
               </p>
             </div>
-            <div className="flex items-center space-x-3 pt-2">
+            <div className="pt-2">
               <label
                 htmlFor="batch-file-input"
-                className="px-4 py-2 bg-gray-800 hover:bg-gray-700 text-gray-200 text-xs font-semibold rounded-lg cursor-pointer border border-gray-700 transition-all"
+                className="px-5 py-2.5 bg-blue-600/90 hover:bg-blue-600 text-white text-xs font-semibold rounded-xl cursor-pointer shadow-md transition-all inline-block"
               >
                 Browse Files
-              </label>
-              <label
-                htmlFor="batch-folder-input"
-                className="px-4 py-2 bg-purple-900/30 hover:bg-purple-900/50 text-purple-300 text-xs font-semibold rounded-lg cursor-pointer border border-purple-700/50 transition-all"
-              >
-                Select Folder
               </label>
             </div>
           </div>

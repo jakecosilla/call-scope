@@ -58,10 +58,30 @@ class SpeechEmotionFoundationInference:
                 else:
                     y_16k = y
 
-                inputs = processor(y_16k, sampling_rate=16000, return_tensors="pt", padding=True)
-                with torch.no_grad():
-                    logits = model(**inputs).logits
-                    probs = torch.softmax(logits, dim=-1).squeeze().numpy()
+                # Windowed chunk inference for long audio clips (>30s) to limit memory overhead
+                if len(y_16k) > 16000 * 30:
+                    chunk_samples = 16000 * 15
+                    all_probs = []
+                    for i in range(0, len(y_16k), chunk_samples):
+                        chunk = y_16k[i : i + chunk_samples]
+                        if len(chunk) > 16000 * 2:
+                            inputs = processor(chunk, sampling_rate=16000, return_tensors="pt", padding=True)
+                            with torch.no_grad():
+                                logits = model(**inputs).logits
+                                chunk_probs = torch.softmax(logits, dim=-1).squeeze().numpy()
+                                all_probs.append(chunk_probs)
+                    if all_probs:
+                        probs = np.mean(all_probs, axis=0)
+                    else:
+                        inputs = processor(y_16k[: 16000 * 15], sampling_rate=16000, return_tensors="pt", padding=True)
+                        with torch.no_grad():
+                            logits = model(**inputs).logits
+                            probs = torch.softmax(logits, dim=-1).squeeze().numpy()
+                else:
+                    inputs = processor(y_16k, sampling_rate=16000, return_tensors="pt", padding=True)
+                    with torch.no_grad():
+                        logits = model(**inputs).logits
+                        probs = torch.softmax(logits, dim=-1).squeeze().numpy()
 
                 label_id = int(np.argmax(probs))
                 confidence_score = float(probs[label_id])
