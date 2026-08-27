@@ -1,4 +1,6 @@
-from datetime import UTC, datetime, timedelta
+from __future__ import annotations
+
+from datetime import datetime, timedelta, timezone
 
 import jwt
 from fastapi import Depends, HTTPException, status
@@ -22,7 +24,7 @@ class LoginResponse(BaseModel):
 
 def create_jwt_token(username: str) -> str:
     validate_auth_config()
-    now = datetime.now(UTC)
+    now = datetime.now(timezone.utc)
     return jwt.encode({"sub": username, "iat": now, "exp": now + timedelta(minutes=JWT_EXPIRY_MINUTES)}, JWT_SECRET_KEY, algorithm=ALGORITHM)
 
 def decode_jwt_token(token: str) -> dict | None:

@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import asyncio
 import csv
 import io
@@ -6,7 +8,7 @@ import os
 import threading
 import uuid
 import zipfile
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from typing import Literal, TypedDict
 
 from app.config import MAX_CONCURRENT_INFERENCE
@@ -41,7 +43,7 @@ class BatchProcessor:
             raise ValueError(f"Upload size exceeds maximum allowed limit ({MAX_UPLOAD_SIZE_BYTES // (1024*1024)}MB)")
 
         batch_id = str(uuid.uuid4())
-        created_at = datetime.now(UTC).isoformat()
+        created_at = datetime.now(timezone.utc).isoformat()
         store = BatchStore.get_instance()
 
         audio_files: dict[str, bytes] = {}
@@ -185,7 +187,7 @@ class BatchProcessor:
                     status="failed",
                     error_message="Audio processing failed. See server logs for details.",
                 )
-            completed_at = datetime.now(UTC).isoformat()
+            completed_at = datetime.now(timezone.utc).isoformat()
             store.update_file_result(batch_id, file_result, completed_at=completed_at)
             await asyncio.sleep(0.01)
 

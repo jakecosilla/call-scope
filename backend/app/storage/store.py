@@ -1,11 +1,12 @@
+from __future__ import annotations
+
 import json
 import os
 import sqlite3
 import threading
 
-from app.domain.schema import BatchSummary, CallAnalysisFileResult
-
 from app.config import SQLITE_DB_PATH
+from app.domain.schema import BatchSummary, CallAnalysisFileResult
 
 DB_PATH = SQLITE_DB_PATH
 
@@ -16,40 +17,59 @@ class BatchStore:
 
     def __init__(self, db_path: str = DB_PATH):
         self.db_path = db_path
+        self._ensure_database_directory()
         self._init_db()
 
-    def _get_connection(self) -> sqlite3.Connection:
-        conn = sqlite3.connect(self.db_path)
+    def _ensure_database_directory(self) -> None:
+        directory = os.path.dirname(os.path.abspath(self.db_path))
+        os.makedirs(directory, exist_ok=True)
+
+    def _connect(self) -> sqlite3.Connection:
+        self._ensure_database_directory()
+        conn = sqlite3.connect(self.db_path, timeout=30.0)
         conn.row_factory = sqlite3.Row
+        conn.execute("PRAGMA busy_timeout = 30000")
         return conn
 
-    def _init_db(self):
-        os.makedirs(os.path.dirname(self.db_path), exist_ok=True)
-        with self._get_connection() as conn:
-            conn.execute(
-                """
-                CREATE TABLE IF NOT EXISTS batches (
-                    batch_id TEXT PRIMARY KEY,
-                    status TEXT NOT NULL,
-                    total_files INTEGER NOT NULL,
-                    processed_files INTEGER NOT NULL,
-                    failed_files INTEGER NOT NULL,
-                    progress_percentage REAL NOT NULL,
-                    created_at TEXT NOT NULL,
-                    completed_at TEXT,
-                    files_json TEXT NOT NULL
-                )
-                """
+    @staticmethod
+    def _ensure_schema(conn: sqlite3.Connection) -> None:
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS batches (
+                batch_id TEXT PRIMARY KEY,
+                status TEXT NOT NULL,
+                total_files INTEGER NOT NULL,
+                processed_files INTEGER NOT NULL,
+                failed_files INTEGER NOT NULL,
+                progress_percentage REAL NOT NULL,
+                created_at TEXT NOT NULL,
+                completed_at TEXT,
+                files_json TEXT NOT NULL
             )
-            conn.execute(
-                """
-                CREATE TABLE IF NOT EXISTS ground_truths (
-                    batch_id TEXT PRIMARY KEY,
-                    ground_truth_json TEXT NOT NULL
-                )
-                """
+            """
+        )
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS ground_truths (
+                batch_id TEXT PRIMARY KEY,
+                ground_truth_json TEXT NOT NULL
             )
-            conn.commit()
+            """
+        )
+        conn.commit()
+
+    def _get_connection(self) -> sqlite3.Connection:
+        conn = self._connect()
+        try:
+            self._ensure_schema(conn)
+        except Exception:
+            conn.close()
+            raise
+        return conn
+
+    def _init_db(self) -> None:
+        with self._connect() as conn:
+            self._ensure_schema(conn)
 
     @classmethod
     def get_instance(cls) -> "BatchStore":
@@ -57,6 +77,11 @@ class BatchStore:
             if cls._instance is None:
                 cls._instance = BatchStore()
             return cls._instance
+
+    @classmethod
+    def reset_instance(cls) -> None:
+        with cls._lock:
+            cls._instance = None
 
     def create_batch(self, batch_id: str, total_files: int, created_at: str) -> BatchSummary:
         batch = BatchSummary(
@@ -139,7 +164,7 @@ class BatchStore:
 
     def update_file_result(
         self, batch_id: str, file_result: CallAnalysisFileResult, completed_at: str | None = None
-    ):
+    ) -> None:
         batch = self.get_batch(batch_id)
         if not batch:
             return
@@ -187,7 +212,7 @@ class BatchStore:
             )
             conn.commit()
 
-    def set_ground_truth(self, batch_id: str, ground_truth: dict):
+    def set_ground_truth(self, batch_id: str, ground_truth: dict) -> None:
         gt_json = json.dumps({k: v.model_dump() for k, v in ground_truth.items()})
         with self._get_connection() as conn:
             conn.execute(

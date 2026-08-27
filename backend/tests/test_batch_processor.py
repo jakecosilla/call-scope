@@ -59,3 +59,16 @@ def test_standalone_csv_returns_manifest_specific_error():
         BatchProcessor.process_zip_bytes(
             b"name,result_json\ntest.wav,{}\n", filename="labels.csv", approach="approach_a"
         )
+
+
+def test_batch_store_recreates_schema_if_database_file_is_replaced(tmp_path):
+    from app.storage.store import BatchStore
+
+    db_path = tmp_path / "recreated.db"
+    store = BatchStore(str(db_path))
+    db_path.unlink()
+
+    batch = store.create_batch("schema-recovery", 1, "2026-08-27T00:00:00+00:00")
+
+    assert batch.batch_id == "schema-recovery"
+    assert store.get_batch("schema-recovery") is not None

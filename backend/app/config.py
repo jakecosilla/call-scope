@@ -1,4 +1,12 @@
 import os
+from pathlib import Path
+
+from dotenv import load_dotenv
+
+# Load .env from repo root (one level up from backend/)
+_env_path = Path(__file__).resolve().parents[2] / ".env"
+load_dotenv(_env_path, override=False)
+
 
 APP_ENV = os.getenv("APP_ENV", "local")
 EVALUATOR_USERNAME = os.getenv("EVALUATOR_USERNAME", "").strip()
